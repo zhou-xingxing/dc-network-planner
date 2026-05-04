@@ -29,9 +29,9 @@
         <el-table-column prop="vrf" label="所属 VRF" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.vrf || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="region_count" label="使用区域数" width="120" align="center">
+        <el-table-column prop="usage_count" label="使用次数" width="120" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.region_count > 0 ? 'success' : 'info'" size="small" effect="plain">{{ row.region_count }}</el-tag>
+            <el-tag :type="row.usage_count > 0 ? 'success' : 'info'" size="small" effect="plain">{{ row.usage_count }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="170">
@@ -45,9 +45,9 @@
             <el-button size="small" type="warning" link @click="showEditDialog(row)">
               <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
             </el-button>
-            <el-popconfirm title="确定删除？如果该类型已被区域使用则无法删除" @confirm="handleDelete(row.id)">
+            <el-popconfirm title="确定删除？如果该网络平面类型已被使用则无法删除" @confirm="handleDelete(row.id)">
               <template #reference>
-                <el-button size="small" type="danger" link :disabled="row.region_count > 0">
+                <el-button size="small" type="danger" link :disabled="row.usage_count > 0">
                   <el-icon style="margin-right: 3px"><Delete /></el-icon>删除
                 </el-button>
               </template>
@@ -100,12 +100,12 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
-import { fetchPlaneTypes, createPlaneType, updatePlaneType, deletePlaneType } from '@/api/networkPlaneTypes'
+import { createPlaneType, deletePlaneType, fetchPlaneTypes, updatePlaneType } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
-import { ElMessage } from 'element-plus'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
+import { Delete, Edit, Plus } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { computed, onMounted, ref } from 'vue'
 
 const loading = ref(false)
 const appStore = useAppStore()

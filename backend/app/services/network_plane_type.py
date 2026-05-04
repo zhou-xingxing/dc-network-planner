@@ -56,15 +56,15 @@ def get_plane_type_by_name(db: Session, name: str) -> Optional[NetworkPlaneType]
     return db.query(NetworkPlaneType).filter(NetworkPlaneType.name == name).first()
 
 
-def count_regions_for_plane_type(db: Session, pt_id: str) -> int:
-    """统计使用了指定网络平面类型的 Region 数量。
+def count_usages_for_plane_type(db: Session, pt_id: str) -> int:
+    """统计指定网络平面类型的使用次数（Region + Scope 维度）。
 
     Args:
         db: 数据库会话。
         pt_id: 平面类型 ID。
 
     Returns:
-        Region 数量。
+        RegionNetworkPlane 实例数量。
     """
     return db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.plane_type_id == pt_id).scalar() or 0
 
@@ -179,9 +179,9 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
     pt = get_plane_type(db, pt_id)
     if not pt:
         return False
-    region_count = count_regions_for_plane_type(db, pt_id)
-    if region_count > 0:
-        raise BusinessError(f"Cannot delete plane type in use by {region_count} region(s)")
+    usage_count = count_usages_for_plane_type(db, pt_id)
+    if usage_count > 0:
+        raise BusinessError(f"Cannot delete plane type in use by {usage_count} usage(s)")
     child_count = count_children_for_plane_type(db, pt_id)
     if child_count > 0:
         raise BusinessError(f"Cannot delete plane type with {child_count} child type(s)")

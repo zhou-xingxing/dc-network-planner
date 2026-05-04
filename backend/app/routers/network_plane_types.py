@@ -9,7 +9,7 @@ from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, PlaneTypeUpdate
 from app.services.network_plane_type import (
-    count_regions_for_plane_type,
+    count_usages_for_plane_type,
     create_plane_type,
     delete_plane_type,
     get_plane_type,
@@ -50,7 +50,7 @@ def create_plane_type_endpoint(
         pt = create_plane_type(db, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return _plane_type_response(db, pt, region_count=0)
+    return _plane_type_response(db, pt, usage_count=0)
 
 
 @router.get("/{pt_id}", response_model=PlaneTypeResponse)
@@ -79,7 +79,7 @@ def update_plane_type_endpoint(
     return _plane_type_response(db, pt)
 
 
-def _plane_type_response(db: Session, pt: NetworkPlaneType, region_count: int | None = None) -> PlaneTypeResponse:
+def _plane_type_response(db: Session, pt: NetworkPlaneType, usage_count: int | None = None) -> PlaneTypeResponse:
     return PlaneTypeResponse(
         id=pt.id,
         name=pt.name,
@@ -88,7 +88,7 @@ def _plane_type_response(db: Session, pt: NetworkPlaneType, region_count: int | 
         vrf=pt.vrf,
         parent_id=pt.parent_id,
         parent_name=pt.parent.name if pt.parent else None,
-        region_count=count_regions_for_plane_type(db, pt.id) if region_count is None else region_count,
+        usage_count=count_usages_for_plane_type(db, pt.id) if usage_count is None else usage_count,
         created_at=format_datetime(pt.created_at),
         updated_at=format_datetime(pt.updated_at),
     )

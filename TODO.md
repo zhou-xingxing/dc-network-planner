@@ -31,4 +31,7 @@
 
 ## review
 - [x] auth
-- [ ] backups
+- [x] backup
+- [ ] network_plane_type
+- [ ] region
+- [ ] region_plane

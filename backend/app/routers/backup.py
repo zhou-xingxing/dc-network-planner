@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -72,10 +69,6 @@ def list_records_endpoint(
     )
 
 
-def _format_dt(value: Optional[datetime]) -> Optional[str]:
-    return format_datetime(value)
-
-
 def _to_config_response(config: BackupConfig) -> BackupConfigResponse:
     return BackupConfigResponse(
         id=config.id,
@@ -89,7 +82,7 @@ def _to_config_response(config: BackupConfig) -> BackupConfigResponse:
         secret_key_configured=bool(config.secret_key),
         bucket=config.bucket,
         object_prefix=config.object_prefix,
-        next_run_at=_format_dt(config.next_run_at),
+        next_run_at=format_datetime(config.next_run_at),
         created_at=format_datetime(config.created_at),
         updated_at=format_datetime(config.updated_at),
     )
@@ -111,5 +104,5 @@ def _to_record_response(record: BackupRecord) -> BackupRecordResponse:
         error_message=record.error_message,
         operator=record.operator,
         started_at=format_datetime(record.started_at),
-        finished_at=_format_dt(record.finished_at),
+        finished_at=format_datetime(record.finished_at),
     )

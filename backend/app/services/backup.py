@@ -94,6 +94,10 @@ def parse_cron_expression(cron_expression: str) -> tuple[set[int], set[int], set
 
 
 def _parse_cron_field(field: str, min_value: int, max_value: int, label: str) -> set[int]:
+    """解析 cron 单字段（如分钟、小时），支持列表、范围、步长。
+
+    例如："1,3-5,*/15" 会解析为 {1, 3, 4, 5, 0, 15, 30, 45}。
+    """
     values: set[int] = set()
     for part in field.split(","):
         values.update(_parse_cron_part(part.strip(), min_value, max_value, label))
@@ -103,6 +107,10 @@ def _parse_cron_field(field: str, min_value: int, max_value: int, label: str) ->
 
 
 def _parse_cron_part(part: str, min_value: int, max_value: int, label: str) -> set[int]:
+    """解析 cron 字段中的一个片段（不含逗号）。
+
+    支持格式：`*`、`N`、`N-M`、`*/S`、`N-M/S`。
+    """
     if not part:
         raise BusinessError(f"Cron {label}字段包含空片段")
 
@@ -127,6 +135,10 @@ def _parse_cron_part(part: str, min_value: int, max_value: int, label: str) -> s
 
 
 def _split_step(part: str, label: str) -> tuple[str, int]:
+    """从 cron 片段中提取步长，例如 `*/15` -> (`*`, 15)。
+
+    无步长时默认返回 1。
+    """
     if "/" not in part:
         return part, 1
     base, step_text = part.split("/", 1)
@@ -137,17 +149,26 @@ def _split_step(part: str, label: str) -> tuple[str, int]:
 
 
 def _parse_int(value: str, label: str) -> int:
+    """将字符串解析为整数，非数字时抛出业务异常。"""
     if not value.isdigit():
         raise BusinessError(f"Cron {label}字段包含非数字值")
     return int(value)
 
 
 def _validate_cron_value(value: int, min_value: int, max_value: int, label: str) -> None:
+    """校验 cron 数值是否在允许范围内。"""
     if value < min_value or value > max_value:
         raise BusinessError(f"Cron {label}字段必须在 {min_value}-{max_value} 范围内")
 
 
 def _cron_matches(candidate: datetime, cron: tuple[set[int], set[int], set[int], set[int], set[int]]) -> bool:
+    """判断给定时间是否匹配已解析的 cron 表达式。
+
+    日期和星期采用标准 cron 语义：
+    - 若两者均为 `*`（全范围），则同时匹配（AND）；
+    - 若任一被显式指定，则满足其一即可（OR）。
+    星期中 0 和 7 均视为周日。
+    """
     minute_values, hour_values, day_values, month_values, weekday_values = cron
     cron_weekday = (candidate.weekday() + 1) % 7
     weekday_match = cron_weekday in weekday_values or (cron_weekday == 0 and 7 in weekday_values)
@@ -479,6 +500,10 @@ def _required_object_storage_value(value: Optional[str], field_name: str) -> str
 
 
 def _config_snapshot(config: BackupConfig) -> str:
+    """将备份配置序列化为字符串快照，用于变更日志记录。
+
+    对 secret_key 仅记录存在状态（configured/empty），避免敏感信息泄露。
+    """
     secret_state = "configured" if config.secret_key else "empty"
     return (
         f"enabled={config.enabled};cron_expression={config.cron_expression};"

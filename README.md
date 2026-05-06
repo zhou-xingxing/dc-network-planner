@@ -1,6 +1,7 @@
 # HCS LLD 管理系统 - 项目说明
 
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/zhou-xingxing/hcs-lld-management/ci.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/zhou-xingxing/hcs-lld-management/actions/workflows/ci.yml)
+[![Backend Test Coverage](https://img.shields.io/badge/Backend%20Test%20Coverage-86%25-brightgreen?style=flat-square)](#测试覆盖率)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5%2B-42b883?style=flat-square&logo=vue.js&logoColor=white)
@@ -18,6 +19,15 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 - 多人协作困难
 
 本系统旨在提供一个 Web 管理平台来解决上述问题。
+
+## 使用流程
+
+1. 先创建**网络平面类型**（如管理平面、业务平面等）— 这是全局字典
+2. 创建 **Region**（如 HCS华北-北京）
+3. 进入 Region 详情页，为该 Region **启用**需要的网络平面类型，并填写 CIDR、VLAN ID、网关位置和网关 IP
+4. 需要查重时使用 **IP 查找** 功能
+5. 需要批量导入时使用 **导入** 功能（先下载模板填写后上传）
+6. 所有操作在 **变更历史** 中可追溯
 
 ## 系统设计
 
@@ -280,6 +290,18 @@ cd ./backend
 make check       # lint + test 串联执行
 ```
 
+### 测试覆盖率
+
+最近一次本地统计：后端行覆盖率 **85.54%**（终端摘要四舍五入显示为 86%）。统计命令为
+`cd backend && make coverage`，数字来自 `backend/coverage.xml` 中的 `line-rate=0.8554`。
+
+```bash
+cd ./backend
+make coverage
+```
+
+覆盖率报告会输出到终端，并生成 `backend/htmlcov/index.html` 和 `backend/coverage.xml`。
+
 ### 运行单个测试文件
 
 ```bash
@@ -304,16 +326,6 @@ pre-commit install
 ## API 文档
 
 启动后端后访问 http://localhost:8000/docs 即可查看交互式 API 文档（Swagger UI），支持在线测试所有 API。
-
-
-## 使用流程
-
-1. 先创建**网络平面类型**（如管理平面、业务平面等）— 这是全局字典
-2. 创建 **Region**（如 HCS华北-北京）
-3. 进入 Region 详情页，为该 Region **启用**需要的网络平面类型，并填写 CIDR、VLAN ID、网关位置和网关 IP
-4. 需要查重时使用 **IP 查找** 功能
-5. 需要批量导入时使用 **导入** 功能（先下载模板填写后上传）
-6. 所有操作在 **变更历史** 中可追溯
 
 ## Docker 部署
 

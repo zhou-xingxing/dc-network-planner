@@ -8,18 +8,20 @@
     <!-- Stat Cards -->
     <el-row :gutter="20" class="stat-row">
       <el-col :xs="12" :sm="12" :md="6" v-for="card in statCards" :key="card.label">
-        <div class="stat-card" :style="{ '--card-gradient': card.gradient, '--card-accent': card.accent }">
-          <div class="stat-card-body">
-            <div class="stat-icon-wrap">
-              <el-icon :size="24"><component :is="card.icon" /></el-icon>
+        <RouterLink class="stat-card-link" :to="card.to" :aria-label="`查看${card.label}`">
+          <div class="stat-card" :style="{ '--card-gradient': card.gradient, '--card-accent': card.accent }">
+            <div class="stat-card-body">
+              <div class="stat-icon-wrap">
+                <el-icon :size="24"><component :is="card.icon" /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ stats[card.key] }}</div>
+                <div class="stat-label">{{ card.label }}</div>
+              </div>
             </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats[card.key] }}</div>
-              <div class="stat-label">{{ card.label }}</div>
-            </div>
+            <div class="stat-card-bar"></div>
           </div>
-          <div class="stat-card-bar"></div>
-        </div>
+        </RouterLink>
       </el-col>
     </el-row>
 
@@ -130,10 +132,38 @@ const stats = ref({
 })
 
 const statCards = [
-  { key: 'total_regions', label: '区域总数', icon: Monitor, gradient: 'linear-gradient(135deg, #1a73e8 0%, #4a90d9 100%)', accent: '#1a73e8' },
-  { key: 'total_plane_types', label: '网络平面类型', icon: ConnectionIcon, gradient: 'linear-gradient(135deg, #34a853 0%, #66bb6a 100%)', accent: '#34a853' },
-  { key: 'total_region_planes', label: '网段总数', icon: Coin, gradient: 'linear-gradient(135deg, #f57c00 0%, #ffb74d 100%)', accent: '#f57c00' },
-  { key: 'total_change_logs', label: '变更记录数', icon: Document, gradient: 'linear-gradient(135deg, #7c4dff 0%, #b388ff 100%)', accent: '#7c4dff' },
+  {
+    key: 'total_regions',
+    label: '区域总数',
+    to: '/regions',
+    icon: Monitor,
+    gradient: 'linear-gradient(135deg, #1a73e8 0%, #4a90d9 100%)',
+    accent: '#1a73e8',
+  },
+  {
+    key: 'total_plane_types',
+    label: '网络平面类型',
+    to: '/plane-types',
+    icon: ConnectionIcon,
+    gradient: 'linear-gradient(135deg, #34a853 0%, #66bb6a 100%)',
+    accent: '#34a853',
+  },
+  {
+    key: 'total_region_planes',
+    label: '网段总数',
+    to: '/lookup',
+    icon: Coin,
+    gradient: 'linear-gradient(135deg, #f57c00 0%, #ffb74d 100%)',
+    accent: '#f57c00',
+  },
+  {
+    key: 'total_change_logs',
+    label: '变更总数',
+    to: '/change-logs',
+    icon: Document,
+    gradient: 'linear-gradient(135deg, #7c4dff 0%, #b388ff 100%)',
+    accent: '#7c4dff',
+  },
 ]
 
 function calcPercent(value, total) {
@@ -192,6 +222,18 @@ onMounted(async () => {
   margin-bottom: var(--spacing-lg);
 }
 
+.stat-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.stat-card-link:focus-visible {
+  outline: 3px solid rgba(26, 115, 232, 0.35);
+  outline-offset: 3px;
+  border-radius: var(--radius-lg);
+}
+
 .stat-card {
   position: relative;
   background: var(--card-gradient);
@@ -199,9 +241,9 @@ onMounted(async () => {
   padding: 20px;
   overflow: hidden;
   transition: transform var(--transition-base), box-shadow var(--transition-base);
-  cursor: default;
+  cursor: pointer;
 }
-.stat-card:hover {
+.stat-card-link:hover .stat-card {
   transform: translateY(-3px);
   box-shadow: var(--shadow-lg);
 }

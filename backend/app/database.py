@@ -1,12 +1,29 @@
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.config import settings
+from app.config import BACKEND_DIR, settings
+
+
+def _normalize_database_url(database_url: str) -> str:
+    """把相对 SQLite 数据库路径固定到 backend 目录下。"""
+    url = make_url(database_url)
+    if url.drivername != "sqlite" or not url.database or url.database == ":memory:":
+        return database_url
+
+    database_path = Path(url.database)
+    if database_path.is_absolute():
+        return database_url
+
+    resolved_path = (BACKEND_DIR / database_path).resolve()
+    return str(url.set(database=str(resolved_path)))
+
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    _normalize_database_url(settings.DATABASE_URL),
     connect_args={"check_same_thread": False},
     echo=False,
 )

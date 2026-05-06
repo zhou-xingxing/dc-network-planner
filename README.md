@@ -15,11 +15,11 @@
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 61 | 3,947 |
+| 后端代码 | 61 | 3,961 |
 | 后端测试 | 12 | 1,487 |
-| 前端代码 | 29 | 2,929 |
+| 前端代码 | 29 | 2,971 |
 | 前端测试 | 0 | 0 |
-| 合计 | 102 | 8,363 |
+| 合计 | 102 | 8,419 |
 <!-- code-lines:end -->
 
 ## 项目结构
@@ -30,14 +30,18 @@
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── main.py                       # FastAPI 应用入口 + CORS + 路由注册
+│   │   ├── config.py                     # 应用配置与 backend/.env 加载
 │   │   ├── database.py                   # SQLAlchemy 引擎 + 会话工厂
-│   │   ├── config.py                     # 配置 (数据库URL, CORS等)
+│   │   ├── dependencies.py               # 认证、权限和 DB 依赖
+│   │   ├── exceptions.py                 # 业务异常定义
 │   │   ├── models/                       # SQLAlchemy ORM 数据模型
 │   │   │   ├── __init__.py
 │   │   │   ├── region.py                 # Region 模型
 │   │   │   ├── network_plane_type.py     # 网络平面类型模型
-│   │   │   ├── region_network_plane.py   # Region-平面关联模型
-│   │   │   └── change_log.py             # 变更日志模型
+│   │   │   ├── region_network_plane.py   # Region 网络平面实例模型
+│   │   │   ├── change_log.py             # 变更日志模型
+│   │   │   ├── user.py                   # 本地用户、角色和 Region 授权模型
+│   │   │   └── backup.py                 # 备份配置与备份记录模型
 │   │   ├── schemas/                      # Pydantic 请求/响应验证
 │   │   │   ├── __init__.py
 │   │   │   ├── common.py                 # 通用响应 (PaginatedResponse)
@@ -45,31 +49,40 @@
 │   │   │   ├── network_plane_type.py     # 网络平面类型 Schema
 │   │   │   ├── change_log.py             # 变更日志 Schema
 │   │   │   ├── lookup.py                 # IP 查找 Schema
-│   │   │   └── excel.py                  # Excel/统计 Schema
+│   │   │   ├── excel.py                  # Excel/统计 Schema
+│   │   │   ├── user.py                   # 用户、角色和权限 Schema
+│   │   │   └── backup.py                 # 备份配置和记录 Schema
 │   │   ├── routers/                      # API 路由
 │   │   │   ├── __init__.py
+│   │   │   ├── auth.py                   # 登录和当前用户 API
 │   │   │   ├── regions.py                # Region + Region-平面关联 API
 │   │   │   ├── network_plane_types.py    # 网络平面类型 API
 │   │   │   ├── lookup.py                 # IP/CIDR 查找 API
 │   │   │   ├── excel.py                  # Excel 导入/导出 API
 │   │   │   ├── change_logs.py            # 变更日志查询 API
-│   │   │   └── stats.py                  # 统计 API
+│   │   │   ├── stats.py                  # 统计 API
+│   │   │   ├── users.py                  # 用户管理 API
+│   │   │   └── backup.py                 # 备份配置和执行 API
 │   │   ├── services/                     # 业务逻辑层
 │   │   │   ├── __init__.py
 │   │   │   ├── change_log.py             # 变更日志记录工具
 │   │   │   ├── region.py                 # Region 业务逻辑
-│   │   │   ├── region_plane.py           # Region-平面关联逻辑
+│   │   │   ├── region_plane.py           # Region 网络平面实例逻辑
 │   │   │   ├── network_plane_type.py     # 网络平面类型业务逻辑
-│   │   │   └── excel.py                  # Excel 导入预览/确认逻辑
+│   │   │   ├── lookup.py                 # IP/CIDR 查找逻辑
+│   │   │   ├── excel.py                  # Excel 导入预览/确认逻辑
+│   │   │   ├── auth.py                   # 本地账号、密码和 JWT 逻辑
+│   │   │   ├── backup.py                 # 备份配置、校验和执行逻辑
+│   │   │   └── backup_scheduler.py       # 后台备份调度器
 │   │   └── utils/                        # 工具函数
 │   │       ├── __init__.py
 │   │       ├── ip_utils.py               # IP/CIDR 解析、重叠检测
-│   │       └── excel_utils.py            # Excel 模板生成、导入解析、导出构建
+│   │       ├── excel_utils.py            # Excel 模板生成、导入解析、导出构建
+│   │       └── time_utils.py             # UTC 存储与应用时区转换
 │   ├── alembic/                          # 数据库迁移
 │   │   ├── env.py                        # Alembic 环境配置 (render_as_batch=True)
 │   │   ├── script.py.mako                # 迁移脚本模板
-│   │   └── versions/                     # 迁移版本文件
-│   │       └── c9ce20c8a1b2_initial.py   # 初始迁移
+│   │   └── versions/                     # 迁移版本文件（初始表、认证、备份、平面树、scope 等）
 │   ├── alembic.ini                       # Alembic 配置
 │   ├── .env                              # 环境变量
 │   ├── requirements.txt                  # Python 依赖
@@ -87,10 +100,13 @@
 │   │   ├── App.vue                       # 根组件
 │   │   ├── api/                          # Axios API 封装
 │   │   │   ├── request.js                # Axios 实例 + 拦截器
+│   │   │   ├── auth.js                   # 登录和当前用户 API
 │   │   │   ├── regions.js                # Region + 网络平面 API
 │   │   │   ├── networkPlaneTypes.js      # 网络平面类型 API
 │   │   │   ├── lookup.js                 # IP 查找 API
-│   │   │   └── excel.js                  # Excel 导入/导出 + 统计 + 变更日志 API
+│   │   │   ├── excel.js                  # Excel 导入/导出 + 统计 + 变更日志 API
+│   │   │   ├── users.js                  # 用户管理 API
+│   │   │   └── backup.js                 # 备份配置和执行 API
 │   │   ├── assets/styles/
 │   │   │   └── main.css                  # 全局样式
 │   │   ├── components/
@@ -98,35 +114,53 @@
 │   │   │       ├── AppLayout.vue         # 布局组件 (侧边栏 + 顶栏 + 内容区)
 │   │   │       └── SideMenu.vue          # 侧边导航菜单
 │   │   ├── router/
-│   │   │   └── index.js                  # 路由定义 (7条路由, 懒加载)
+│   │   │   └── index.js                  # 路由定义（登录 + 9 个业务页面，懒加载）
 │   │   ├── stores/
-│   │   │   └── app.js                    # Pinia 状态 (操作者名)
+│   │   │   └── app.js                    # Pinia 状态（登录态、当前用户、侧边栏）
+│   │   ├── utils/
+│   │   │   └── time.js                   # 前端时间格式化
 │   │   └── views/
+│   │       ├── Login.vue                 # 登录页
 │   │       ├── Dashboard.vue             # 仪表盘
 │   │       ├── Regions.vue               # 区域管理
 │   │       ├── RegionDetail.vue          # 区域详情 + 网络平面管理
 │   │       ├── PlaneTypes.vue            # 网络平面类型管理
 │   │       ├── Lookup.vue                # IP 查找
 │   │       ├── ImportExport.vue          # 导入 / 导出
-│   │       └── ChangeLogs.vue            # 变更历史
+│   │       ├── ChangeLogs.vue            # 变更历史
+│   │       ├── BackupConfig.vue          # 备份配置
+│   │       └── Users.vue                 # 用户管理
 │   ├── index.html
 │   ├── package.json                      # NPM 依赖
+│   ├── package-lock.json                 # NPM 锁定依赖
 │   ├── vite.config.js                    # Vite 配置 (含 API 代理)
 │   ├── .env.development                  # 开发环境变量
+│   ├── run_build.sh                      # 前端构建脚本
 │   └── start.sh                          # 前端启动脚本
 │
-├── docker-compose.yml                    # Docker Compose 编排
-├── SYSTEM_DESIGN.md                     # 系统架构设计文档
-└── 项目使用说明.md                        # 本文件：项目使用说明
+├── scripts/
+│   └── count_code_lines.py               # README 代码行统计脚本
+├── .pre-commit-config.yaml               # pre-commit 配置
+├── .gitignore
+├── AGENTS.md                             # Agent 工作约定
+├── CLAUDE.md                             # Claude 工作约定
+├── TODO.md                               # 待办事项
+├── SYSTEM_DESIGN.md                      # 系统架构设计文档
+└── README.md                             # 项目说明
+```
 
 Docker 部署文件：
+
+```
+./
+├── docker-compose.yml                    # Docker Compose 编排
 ├── backend/
-│   ├── Dockerfile                        # 后端 Docker 镜像 (Python 3.12-slim, 多阶段构建)
+│   ├── Dockerfile                        # 后端 Docker 镜像
 │   └── .dockerignore
-├── frontend/
-│   ├── Dockerfile                        # 前端 Docker 镜像 (Node 20 构建 + Nginx 运行)
-│   ├── nginx.conf                        # Nginx 配置 (API 代理 + SPA 路由)
-│   └── .dockerignore
+└── frontend/
+    ├── Dockerfile                        # 前端 Docker 镜像
+    ├── nginx.conf                        # Nginx 配置 (API 代理 + SPA 路由)
+    └── .dockerignore
 ```
 
 ## 启动方式
@@ -138,6 +172,15 @@ Docker 部署文件：
 - npm >= 9
 
 ### 步骤 1：启动后端
+
+推荐使用后端启动脚本，它会自动进入 `backend/` 目录、准备虚拟环境、执行迁移并启动服务：
+
+```bash
+cd ./backend
+bash start.sh
+```
+
+也可以手动执行以下步骤。后端命令请始终在 `backend/` 目录下运行；本地 SQLite 默认数据库为 `backend/hcs_lld.db`，配置从 `backend/.env` 加载。
 
 ```bash
 cd ./backend
@@ -194,7 +237,7 @@ python seed.py
 ## 快速启动脚本
 
 ```bash
-# 后端
+# 后端，会自动进入脚本所在目录、执行迁移并启动服务
 cd backend && bash start.sh
 
 # 前端 (新终端窗口)

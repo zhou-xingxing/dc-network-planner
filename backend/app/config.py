@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -27,7 +31,7 @@ class Settings(BaseSettings):
     BOOTSTRAP_ADMIN_PASSWORD: str = "admin"  # 初始管理员登录密码
     BOOTSTRAP_ADMIN_DISPLAY_NAME: str = "系统管理员"  # 初始管理员显示名称
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": BACKEND_DIR / ".env", "env_file_encoding": "utf-8"}
 
 
 settings = Settings()

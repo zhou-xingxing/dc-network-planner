@@ -16,7 +16,7 @@
         <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" size="large" type="password" autocomplete="current-password" show-password />
         </el-form-item>
-        <el-button type="primary" size="large" class="login-button" :loading="loading" @click="handleLogin">
+        <el-button type="primary" native-type="submit" size="large" class="login-button" :loading="loading">
           登录
         </el-button>
       </el-form>
@@ -43,9 +43,11 @@ const rules = {
 }
 
 async function handleLogin() {
-  await formRef.value?.validate()
+  if (loading.value) return
   loading.value = true
   try {
+    const valid = await formRef.value?.validate().catch(() => false)
+    if (!valid) return
     const result = await login(form.username, form.password)
     appStore.setSession(result.access_token, result.user)
     ElMessage.success('登录成功')

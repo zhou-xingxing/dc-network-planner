@@ -1,17 +1,6 @@
 # HCS LLD 管理系统 - 架构设计文档
 
-## 1. 项目背景
-
-HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level Design）是部署 HCS 所需的详细设计文档，通常以 Excel 文件形式记录部署云平台所需的各类网络平面（Network Plane）地址段规划。随着管理的云平台数量增多，传统的本地 Excel 管理方式存在以下问题：
-
-- 多个 Region 的数据分散在多个文件中，难以统一查询
-- 无法快速检查某 IP 段是否已被分配
-- 数据变更无版本追溯能力
-- 多人协作困难
-
-本系统旨在提供一个 Web 管理平台来解决上述问题。
-
-## 2. 核心需求
+## 1. 核心需求
 
 | 需求 | 说明 |
 |---|---|
@@ -25,7 +14,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 | 数据备份 | 支持配置备份目标，手动立即备份，按五段式 cron 表达式自动备份 |
 | 认证与权限 | 支持本地账号登录，按 administrator / user 两类角色控制全局配置和 Region 业务数据写权限 |
 
-## 3. 技术选型
+## 2. 技术选型
 
 | 层级 | 技术 | 版本 | 选型理由 |
 |---|---|---|---|
@@ -44,7 +33,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 | HTTP 客户端 | Axios | 1.7+ | 拦截器、请求/响应转换 |
 | 前后端通信 | RESTful API | - | 简单通用，便于调试 |
 
-## 4. 整体架构
+## 3. 整体架构
 
 ```mermaid
 graph TB
@@ -72,7 +61,7 @@ graph TB
     Models <--> DB
 ```
 
-### 4.1 后端分层架构
+### 3.1 后端分层架构
 
 后端采用经典的三层架构：
 
@@ -80,7 +69,7 @@ graph TB
 2. **Service 层** - 核心业务逻辑，包括 CIDR 重叠检测、变更日志记录、Excel 解析验证。Router 层调用 Service 层，Service 层操作 Model 层。
 3. **Model 层** - SQLAlchemy ORM 模型，定义数据表结构和关系。通过 Alembic 管理数据库迁移。
 
-### 4.2 前端组件架构
+### 3.2 前端组件架构
 
 前端采用 Vue 3 Composition API + Vue Router 组织页面：
 
@@ -91,9 +80,9 @@ graph TB
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
 
-## 5. 数据模型设计
+## 4. 数据模型设计
 
-### 5.1 实体关系图
+### 4.1 实体关系图
 
 ```mermaid
 erDiagram
@@ -196,7 +185,7 @@ erDiagram
     }
 ```
 
-### 5.2 核心表设计
+### 4.2 核心表设计
 
 #### users
 
@@ -326,9 +315,9 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | started_at | DateTime | NOT NULL | 开始时间 |
 | finished_at | DateTime | NULLABLE | 完成时间 |
 
-## 6. API 设计
+## 5. API 设计
 
-### 6.1 API 端点总览
+### 5.1 API 端点总览
 
 #### 健康检查
 
@@ -388,7 +377,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | POST | `/api/backup/run` | 立即执行一次备份；需 administrator |
 | GET | `/api/backup/records` | 查询备份执行历史 |
 
-### 6.2 关键接口详情
+### 5.2 关键接口详情
 
 #### IP 查重 (GET /api/lookup)
 
@@ -437,7 +426,7 @@ GET /api/backup/records
   → 分页查询备份历史
 ```
 
-### 6.3 错误处理
+### 5.3 错误处理
 
 业务错误返回统一格式：`{ "detail": "错误描述" }`。FastAPI/Pydantic 参数校验错误（422）中 `detail` 为校验错误列表。
 
@@ -450,7 +439,7 @@ GET /api/backup/records
 | 资源冲突（重复名称/重叠 CIDR） | 409 |
 | 服务器内部错误 | 500 |
 
-### 6.4 认证与权限
+### 5.4 认证与权限
 
 除 `/api/health` 和 `/api/auth/login` 外，业务 API 均要求 `Authorization: Bearer <token>`。后端通过统一依赖解析当前用户，并在 Router 层做角色和 Region 授权校验。
 
@@ -470,7 +459,7 @@ GET /api/backup/records
 7. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
-### 6.5 启动初始化
+### 5.5 启动初始化
 
 应用启动时执行 `ensure_bootstrap_admin()`：当 `users` 表为空时，根据配置创建第一个 `administrator`。相关配置：
 
@@ -482,21 +471,21 @@ GET /api/backup/records
 | `BOOTSTRAP_ADMIN_PASSWORD` | `admin` | 初始管理员密码，生产环境必须覆盖 |
 | `BOOTSTRAP_ADMIN_DISPLAY_NAME` | `系统管理员` | 初始管理员显示名 |
 
-## 7. 关键技术决策
+## 6. 关键技术决策
 
-### 7.1 RegionNetworkPlane 承载网段
+### 6.1 RegionNetworkPlane 承载网段
 
 **决策**：不再单独维护额外的网段明细表，`RegionNetworkPlane` 本身就是 Region 内的一条网络平面网段记录。
 
 **理由**：业务上 Region 内启用的网络平面即代表一个具体网段，CIDR、VLAN、网关位置和网关 IP 都属于这条网段记录。移除额外的网段明细层可以减少重复表达，让查询、导入导出和权限边界都围绕 `region_network_planes` 展开。
 
-### 7.2 Python 端 CIDR 重叠检测
+### 6.2 Python 端 CIDR 重叠检测
 
 **决策**：使用 Python `ipaddress` 标准库进行 CIDR 解析和重叠检测，而非编写原始 SQL。
 
 **理由**：SQLite 无原生 CIDR 数据类型。`ipaddress.IPv4Network.overlaps()` 提供了正确的语义。MVP 数据量下内存扫描性能绰绰有余。
 
-### 7.3 全局网络平面类型树
+### 6.3 全局网络平面类型树
 
 **决策**：网络平面的父子层级只维护在 `network_plane_types.parent_id`，所有 Region 共享同一棵类型树。`region_network_planes` 表示某个 Region 在某个作用域启用了哪个类型，以及该 Region 下该类型实例对应的 CIDR。
 
@@ -513,31 +502,32 @@ GET /api/backup/records
 7. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。
-### 7.4 服务层变更日志
+
+### 6.4 服务层变更日志
 
 **决策**：Service 层显式调用 `log_change()`，而非 SQLAlchemy 事件监听器。
 
 **理由**：事件监听器需要额外的 `session.info` 传递操作者上下文，且隐含行为难以调试。Service 层方式是显式的、可单元测试的。
 
-### 7.5 UUID 主键
+### 6.5 UUID 主键
 
 **决策**：所有表使用 UUID v4 主键，存储为 `String(36)`。
 
 **理由**：UUID 防止 ID 枚举攻击，便于未来数据迁移/合并（分布式无冲突）。字符串格式在 API 响应和日志中可读性好。
 
-### 7.6 两阶段 Excel 导入
+### 6.6 两阶段 Excel 导入
 
 **决策**：预览（解析验证）→ 确认（批量写入）两阶段。
 
 **理由**：预览步骤让用户在提交前检查解析结果和验证错误。确认时只需传入 preview_id，避免大数据量重新传输。预览缓存 30 分钟防止内存无限增长。
 
-### 7.7 前端本地状态管理
+### 6.7 前端本地状态管理
 
 **决策**：每个页面独立 fetch 数据，Pinia 仅存储会话状态（token、当前用户、权限/Region 授权）和少量 UI 状态（侧边栏状态）。
 
 **理由**：共享实体状态引入一致性挑战（跨页面数据同步），没有 WebSocket 难以保持同步。独立 fetch 更简单、正确。
 
-### 7.8 数据库备份机制
+### 6.8 数据库备份机制
 
 **决策**：使用 `backup_configs` 保存全局备份配置，使用 `backup_records` 记录每次执行结果。FastAPI lifespan 启动轻量后台线程 `BackupScheduler`，按固定间隔检查 `next_run_at` 是否到期。
 
@@ -589,7 +579,7 @@ GET /api/backup/records
 
 **限制**：当前实现只支持 SQLite 数据库备份；若未来切换 PostgreSQL/MySQL，需要替换备份生成策略（如 pg_dump/mysqldump 或数据库原生快照）。
 
-### 7.9 时间与时区策略
+### 6.9 时间与时区策略
 
 **决策**：业务时间统一按 UTC 存储和传输，用户配置的定时备份 cron 表达式按系统业务时区解释。默认业务时区为 `Asia/Shanghai`，通过后端部署配置 `APP_TIMEZONE` 控制，不在前端开放修改。
 
@@ -603,7 +593,7 @@ GET /api/backup/records
 
 **理由**：UTC 存储避免服务器本地时区变化导致排序、过滤和调度判断漂移；业务时区解释定时任务，符合用户对 `0 2 * * *` 表示“每天业务时区 02:00”的直觉。
 
-### 7.10 认证鉴权机制
+### 6.10 认证鉴权机制
 
 **决策**：采用本地账号 + Bearer token + 两级角色模型。密码使用 PBKDF2-HMAC-SHA256 加盐哈希存储；token 使用 HS256 签名并携带用户 ID、用户名、角色、签发时间和过期时间。
 
@@ -618,7 +608,7 @@ GET /api/backup/records
 
 **审计策略**：变更日志仍由 Service 层显式写入，但 `operator` 由 Router 层从当前登录用户解析得到，前端不再传递操作者字段。
 
-## 8. 前端路由设计
+## 7. 前端路由设计
 
 | 路径 | 页面组件 | 说明 |
 |---|---|---|
@@ -639,7 +629,7 @@ GET /api/backup/records
 2. 其他路由必须已登录；未登录跳转 `/login?redirect=...`。
 3. `meta.adminOnly` 页面仅 `administrator` 可访问。
 
-## 9. 部署说明
+## 8. 部署说明
 
 ### 环境要求
 
@@ -736,9 +726,9 @@ docker run -d --name hcs-lld-frontend -p 80:80 \
 5. **构建缓存**：`requirements.txt` 和 `package.json` 在源码之前复制，利用 Docker 层缓存加速重复构建
 6. **启动管理员**：首次启动且 `users` 表为空时，后端会按 `BOOTSTRAP_ADMIN_*` 创建初始 administrator；生产环境必须覆盖默认密码和 `JWT_SECRET_KEY`
 
-## 10. CI/CD 设计
+## 9. CI/CD 设计
 
-### 10.1 流水线架构
+### 9.1 流水线架构
 
 ```mermaid
 graph TB
@@ -751,7 +741,7 @@ graph TB
     Build --> Publish
 ```
 
-### 10.2 触发规则
+### 9.2 触发规则
 
 | 事件 | 触发行为 |
 |---|---|
@@ -759,7 +749,7 @@ graph TB
 | 推送 `main` 分支 | 全部测试 + Docker 构建并推送 latest + SHA 标签 |
 | 推送 `v*` 标签 | 全部测试 + Docker 构建并推送 version + latest + SHA 标签 |
 
-### 10.3 工作流定义
+### 9.3 工作流定义
 
 四个 Job 按需串联：
 
@@ -781,7 +771,7 @@ graph TB
    - Matrix 策略并行构建 backend 和 frontend 镜像
    - 镜像缓存（GitHub Actions Cache）加速重复构建
 
-### 10.4 镜像标签策略
+### 9.4 镜像标签策略
 
 | 标签 | 生成条件 | 示例 |
 |---|---|---|
@@ -789,13 +779,13 @@ graph TB
 | `sha-{short}` | 推送 main 分支时 | `ghcr.io/owner/hcs-lld-backend:sha-a1b2c3d` |
 | `{version}` | 推送 v* 标签时 | `ghcr.io/owner/hcs-lld-backend:1.0.0` |
 
-### 10.5 测试策略
+### 9.5 测试策略
 
 - **数据库隔离**：每个测试用例使用独立的内存 SQLite（`sqlite://` + `StaticPool`），`Base.metadata.create_all()` 在每个 fixture 中独立建表，互不污染
 - **依赖注入覆盖**：通过 `app.dependency_overrides[get_db]` 将数据库会话替换为测试用内存数据库会话
 - **无 E2E 测试**：MVP 阶段只做后端 API 测试 + 前端 build 验证。E2E 测试维护成本高于当前收益
 
-### 10.6 关键决策
+### 9.6 关键决策
 
 1. **GITHUB_TOKEN 无需额外配置**：GitHub Actions 内置 token 自动有权限推送 ghcr.io 至当前仓库
 2. **Matrix 构建**：backend 和 frontend 使用同一 workflow 的 matrix 策略并行构建，减少 CI 总耗时

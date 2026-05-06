@@ -10,17 +10,19 @@
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)
 
-## 代码行数统计
+HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level Design）是部署 HCS 所需的详细设计文档，通常以 Excel 文件形式记录部署云平台所需的各类网络平面（Network Plane）地址段规划。随着管理的云平台数量增多，传统的本地 Excel 管理方式存在以下问题：
 
-<!-- code-lines:start -->
-| 分类 | 文件数 | 代码行 |
-|---|---:|---:|
-| 后端代码 | 61 | 4,003 |
-| 后端测试 | 12 | 1,599 |
-| 前端代码 | 29 | 3,042 |
-| 前端测试 | 0 | 0 |
-| 合计 | 102 | 8,644 |
-<!-- code-lines:end -->
+- 多个 Region 的数据分散在多个文件中，难以统一查询
+- 无法快速检查某 IP 段是否已被分配
+- 数据变更无版本追溯能力
+- 多人协作困难
+
+本系统旨在提供一个 Web 管理平台来解决上述问题。
+
+## 系统设计
+
+详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 。
+
 
 ## 项目结构
 
@@ -299,27 +301,10 @@ python -m pytest tests/test_regions.py::test_create_region -v
 pre-commit install
 ```
 
-### 测试覆盖说明
-
-后端测试覆盖认证、备份、Excel、健康检查、IP 查找、网络平面类型、平面树和 Region CRUD：
-
-| 测试文件 | 用例数 | 覆盖内容 |
-|---|---|---|
-| `test_health.py` | 2 | 健康检查端点 |
-| `test_regions.py` | 7 | Region 创建/列表/搜索/更新/删除/重复检查/不存在 |
-| `test_lookup.py` | 5 | IP 查找/精确CIDR/重叠CIDR/无匹配/无效查询 |
-| `test_plane_tree.py` | 17 | 多级平面树 CRUD + CIDR/网关约束 + 级联删除 |
-| `test_excel_utils.py` | 3 | 模板生成/空数据解析/有效数据解析 |
-
-每个测试用例使用独立的内存 SQLite 数据库，互不干扰。
-
 ## API 文档
 
 启动后端后访问 http://localhost:8000/docs 即可查看交互式 API 文档（Swagger UI），支持在线测试所有 API。
 
-## 系统设计
-
-详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 。
 
 ## 使用流程
 
@@ -350,3 +335,15 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 | `test-backend` | pytest tests/ -v | 所有 push 和 PR |
 | `build-frontend` | npm install → npm run build | 所有 push 和 PR |
 | `build-and-push` | Docker 构建并推送到 GHCR | main 分支 push 或 tag 推送 |
+
+## 代码行数统计
+
+<!-- code-lines:start -->
+| 分类 | 文件数 | 代码行 |
+|---|---:|---:|
+| 后端代码 | 61 | 4,003 |
+| 后端测试 | 12 | 1,599 |
+| 前端代码 | 29 | 3,042 |
+| 前端测试 | 0 | 0 |
+| 合计 | 102 | 8,644 |
+<!-- code-lines:end -->

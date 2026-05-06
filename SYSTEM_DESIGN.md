@@ -510,8 +510,9 @@ GET /api/backup/records
 4. 同一父级下已启用的兄弟类型平面 CIDR 不能互相重叠；同一 Region 内同一平面类型的不同 `scope` 实例之间 CIDR 也不能重叠。
 5. 删除某个 Region 下的父平面时，只递归删除实际挂载到该父实例下的子树，避免误删其他 `scope` 的平面实例。
 6. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复启用同一个网络平面类型。
+7. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
-**前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；
+**前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。
 ### 7.4 服务层变更日志
 
 **决策**：Service 层显式调用 `log_change()`，而非 SQLAlchemy 事件监听器。

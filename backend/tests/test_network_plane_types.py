@@ -65,6 +65,134 @@ def test_create_plane_type_with_parent(client, admin_headers):
     assert data["parent_name"] == "父平面"
 
 
+def test_create_child_plane_type_requires_matching_parent_privacy(client, admin_headers):
+    """子级网络平面类型的私网属性必须与父级一致，不一致时拒绝请求。"""
+    private_parent = client.post(
+        "/api/network-plane-types",
+        json={"name": "私网父平面", "is_private": True},
+        headers=admin_headers,
+    ).json()
+    public_parent = client.post(
+        "/api/network-plane-types",
+        json={"name": "公网父平面", "is_private": False},
+        headers=admin_headers,
+    ).json()
+
+    private_child = client.post(
+        "/api/network-plane-types",
+        json={"name": "私网子平面", "parent_id": private_parent["id"], "is_private": True},
+        headers=admin_headers,
+    )
+    public_child = client.post(
+        "/api/network-plane-types",
+        json={"name": "公网子平面", "parent_id": public_parent["id"], "is_private": False},
+        headers=admin_headers,
+    )
+    mismatched_child = client.post(
+        "/api/network-plane-types",
+        json={"name": "错误子平面", "parent_id": private_parent["id"], "is_private": False},
+        headers=admin_headers,
+    )
+
+    assert private_child.status_code == 201
+    assert private_child.json()["is_private"] is True
+    assert public_child.status_code == 201
+    assert public_child.json()["is_private"] is False
+    assert mismatched_child.status_code == 409
+    assert "必须与父级一致" in mismatched_child.json()["detail"]
+
+
+def test_update_root_plane_type_privacy_cascades_to_descendants(client, admin_headers):
+    """根类型变更私网属性时，整棵子树同步跟随。"""
+    root = client.post(
+        "/api/network-plane-types",
+        json={"name": "根平面", "is_private": False},
+        headers=admin_headers,
+    ).json()
+    child = client.post(
+        "/api/network-plane-types",
+        json={"name": "子平面", "parent_id": root["id"]},
+        headers=admin_headers,
+    ).json()
+    grandchild = client.post(
+        "/api/network-plane-types",
+        json={"name": "孙平面", "parent_id": child["id"]},
+        headers=admin_headers,
+    ).json()
+
+    response = client.put(
+        f"/api/network-plane-types/{root['id']}",
+        json={"is_private": True},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_private"] is True
+    child_response = client.get(f"/api/network-plane-types/{child['id']}", headers=admin_headers)
+    grandchild_response = client.get(f"/api/network-plane-types/{grandchild['id']}", headers=admin_headers)
+    assert child_response.json()["is_private"] is True
+    assert grandchild_response.json()["is_private"] is True
+
+
+def test_update_parent_move_inherits_new_parent_privacy_for_subtree(client, admin_headers):
+    """移动子树时，被移动节点及其后代继承新父级的私网属性。"""
+    public_root = client.post(
+        "/api/network-plane-types",
+        json={"name": "公网根平面", "is_private": False},
+        headers=admin_headers,
+    ).json()
+    child = client.post(
+        "/api/network-plane-types",
+        json={"name": "待移动子平面", "parent_id": public_root["id"]},
+        headers=admin_headers,
+    ).json()
+    grandchild = client.post(
+        "/api/network-plane-types",
+        json={"name": "待移动孙平面", "parent_id": child["id"]},
+        headers=admin_headers,
+    ).json()
+    private_root = client.post(
+        "/api/network-plane-types",
+        json={"name": "私网根平面", "is_private": True},
+        headers=admin_headers,
+    ).json()
+
+    response = client.put(
+        f"/api/network-plane-types/{child['id']}",
+        json={"parent_id": private_root["id"], "is_private": True},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["parent_id"] == private_root["id"]
+    assert response.json()["is_private"] is True
+    grandchild_response = client.get(f"/api/network-plane-types/{grandchild['id']}", headers=admin_headers)
+    assert grandchild_response.json()["is_private"] is True
+
+
+def test_update_child_plane_type_rejects_mismatched_parent_privacy(client, admin_headers):
+    """子级类型单独更新为与父级不一致的私网属性时直接拒绝。"""
+    parent = client.post(
+        "/api/network-plane-types",
+        json={"name": "父平面", "is_private": True},
+        headers=admin_headers,
+    ).json()
+    child = client.post(
+        "/api/network-plane-types",
+        json={"name": "子平面", "parent_id": parent["id"], "is_private": True},
+        headers=admin_headers,
+    ).json()
+
+    response = client.put(
+        f"/api/network-plane-types/{child['id']}",
+        json={"is_private": False},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert "必须与父级一致" in response.json()["detail"]
+
+
 def test_update_plane_type_returns_404(client, admin_headers):
     response = client.put(
         "/api/network-plane-types/missing-plane-type",

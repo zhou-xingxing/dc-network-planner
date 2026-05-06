@@ -86,6 +86,7 @@ def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> Netw
         新创建的 NetworkPlaneType 对象。
     """
     _validate_parent_assignment(db, target_id=None, parent_id=data.parent_id)
+    _ensure_privacy_matches_parent(db, parent_id=data.parent_id, is_private=data.is_private)
     pt = NetworkPlaneType(
         name=data.name,
         description=data.description or "",
@@ -128,9 +129,7 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
     if data.description is not None and data.description != pt.description:
         changes["description"] = (pt.description or "", data.description or "")
         pt.description = data.description
-    if data.is_private is not None and data.is_private != pt.is_private:
-        changes["is_private"] = (pt.is_private, data.is_private)
-        pt.is_private = data.is_private
+    descendant_privacy_changed = False
     if "vrf" in data.model_fields_set:
         new_vrf = data.vrf or None
         if new_vrf != pt.vrf:
@@ -142,8 +141,17 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
             if _count_regions_for_type_and_descendants(db, pt_id) > 0:
                 raise BusinessError("已被 Region 使用的网络平面类型不能调整父级")
             _validate_parent_assignment(db, target_id=pt_id, parent_id=new_parent_id)
+            requested_is_private = data.is_private if data.is_private is not None else pt.is_private
+            _ensure_privacy_matches_parent(db, parent_id=new_parent_id, is_private=requested_is_private)
             changes["parent_id"] = (pt.parent_id or "", new_parent_id or "")
             pt.parent_id = new_parent_id
+    elif pt.parent_id and data.is_private is not None:
+        _ensure_privacy_matches_parent(db, parent_id=pt.parent_id, is_private=data.is_private)
+    new_is_private = _resolve_inherited_privacy(db, pt, data)
+    if new_is_private != pt.is_private:
+        changes["is_private"] = (pt.is_private, new_is_private)
+        pt.is_private = new_is_private
+        descendant_privacy_changed = True
     if changes:
         for field, (old, new) in changes.items():
             log_change(
@@ -156,6 +164,8 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
                 new_value=str(new),
                 operator=operator,
             )
+        if descendant_privacy_changed:
+            _sync_descendant_privacy(db, pt, new_is_private, operator)
         db.flush()
     return pt
 
@@ -216,6 +226,44 @@ def _validate_parent_assignment(db: Session, target_id: Optional[str], parent_id
         raise BusinessError("已达到最大嵌套层级限制（3级）")
     if target_id:
         _ensure_descendant_depths_within_limit(db, target_id, parent_depth=parent_depth)
+
+
+def _resolve_inherited_privacy(db: Session, pt: NetworkPlaneType, data: PlaneTypeUpdate) -> bool:
+    """按父级继承规则计算目标类型最终私网属性。"""
+    if pt.parent_id:
+        parent = db.get(NetworkPlaneType, pt.parent_id)
+        if parent:
+            return parent.is_private
+    if data.is_private is not None:
+        return data.is_private
+    return pt.is_private
+
+
+def _ensure_privacy_matches_parent(db: Session, parent_id: str | None, is_private: bool) -> None:
+    """确保子类型请求的私网属性与父类型一致。"""
+    if not parent_id:
+        return
+    parent = db.get(NetworkPlaneType, parent_id)
+    if parent and parent.is_private != is_private:
+        raise BusinessError("子级网络平面类型的私网/公网属性必须与父级一致")
+
+
+def _sync_descendant_privacy(db: Session, pt: NetworkPlaneType, is_private: bool, operator: str) -> None:
+    """同步指定类型所有后代的私网属性，保持整棵类型子树一致。"""
+    for child in _collect_type_descendants(db, pt.id):
+        if child.is_private == is_private:
+            continue
+        log_change(
+            db,
+            entity_type="network_plane_type",
+            entity_id=child.id,
+            action="update",
+            field_name="is_private",
+            old_value=str(child.is_private),
+            new_value=str(is_private),
+            operator=operator,
+        )
+        child.is_private = is_private
 
 
 def _get_type_depth(db: Session, plane_type: NetworkPlaneType) -> int:

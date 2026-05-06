@@ -199,6 +199,7 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
 
 
 def _validate_parent_assignment(db: Session, target_id: Optional[str], parent_id: Optional[str]) -> None:
+    """校验目标类型设置父级是否合法，防止循环引用及超出最大层级限制。"""
     if parent_id is None:
         if target_id:
             _ensure_descendant_depths_within_limit(db, target_id, parent_depth=-1)
@@ -218,6 +219,7 @@ def _validate_parent_assignment(db: Session, target_id: Optional[str], parent_id
 
 
 def _get_type_depth(db: Session, plane_type: NetworkPlaneType) -> int:
+    """计算指定网络平面类型相对于根节点的深度（0-based）。"""
     depth = 0
     current = plane_type
     visited = {current.id}
@@ -232,6 +234,7 @@ def _get_type_depth(db: Session, plane_type: NetworkPlaneType) -> int:
 
 
 def _is_descendant(db: Session, candidate_id: str, ancestor_id: str) -> bool:
+    """判断 candidate_id 是否为 ancestor_id 的后代节点。"""
     current = db.get(NetworkPlaneType, candidate_id)
     visited: set[str] = set()
     while current and current.parent_id and current.id not in visited:
@@ -243,6 +246,7 @@ def _is_descendant(db: Session, candidate_id: str, ancestor_id: str) -> bool:
 
 
 def _ensure_descendant_depths_within_limit(db: Session, target_id: str, parent_depth: int) -> None:
+    """确保 target_id 及其所有后代在挂到指定父深度下后，不会超过最大层级限制。"""
     descendants = _collect_type_descendant_depths(db, target_id, relative_depth=1)
     new_target_depth = parent_depth + 1
     if descendants and max(new_target_depth + relative_depth for relative_depth in descendants) > MAX_PLANE_TYPE_DEPTH:
@@ -250,6 +254,7 @@ def _ensure_descendant_depths_within_limit(db: Session, target_id: str, parent_d
 
 
 def _collect_type_descendant_depths(db: Session, plane_type_id: str, relative_depth: int) -> list[int]:
+    """递归收集指定类型所有后代相对于该类型的深度列表。"""
     result: list[int] = []
     children = db.query(NetworkPlaneType).filter(NetworkPlaneType.parent_id == plane_type_id).all()
     for child in children:
@@ -259,6 +264,7 @@ def _collect_type_descendant_depths(db: Session, plane_type_id: str, relative_de
 
 
 def _count_regions_for_type_and_descendants(db: Session, plane_type_id: str) -> int:
+    """统计指定类型及其所有后代被 RegionNetworkPlane 引用的总次数。"""
     type_ids = [plane_type_id] + [child.id for child in _collect_type_descendants(db, plane_type_id)]
     return (
         db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.plane_type_id.in_(type_ids)).scalar() or 0
@@ -266,6 +272,7 @@ def _count_regions_for_type_and_descendants(db: Session, plane_type_id: str) -> 
 
 
 def _collect_type_descendants(db: Session, plane_type_id: str) -> list[NetworkPlaneType]:
+    """递归收集指定类型的所有后代节点。"""
     result: list[NetworkPlaneType] = []
     children = db.query(NetworkPlaneType).filter(NetworkPlaneType.parent_id == plane_type_id).all()
     for child in children:

@@ -2,9 +2,9 @@
   <div v-loading="loading">
     <div class="page-heading">
       <div>
-        <el-button size="small" text @click="$router.push('/regions')" :icon="ArrowLeft" style="margin-bottom: 8px">返回区域列表</el-button>
+        <el-button size="small" text @click="$router.push('/regions')" :icon="ArrowLeft" style="margin-bottom: 8px">返回 Region 列表</el-button>
         <h2 class="page-title">{{ region.name }}</h2>
-        <p class="page-desc">区域详情与网络平面管理</p>
+        <p class="page-desc">Region 详情与网络平面管理</p>
       </div>
       <div v-if="appStore.isAdministrator" class="header-actions">
         <el-button size="small" plain @click="editRegion">
@@ -25,95 +25,164 @@
       </template>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="描述" :content-style="desContentStyle">{{ region.description || '无' }}</el-descriptions-item>
-        <el-descriptions-item label="区域ID" :content-style="desContentStyle">{{ region.id }}</el-descriptions-item>
         <el-descriptions-item label="网络平面数" :content-style="desContentStyle">{{ region.plane_count }}</el-descriptions-item>
         <el-descriptions-item label="创建时间" :content-style="desContentStyle">{{ formatDateTime(region.created_at) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间" :content-style="desContentStyle">{{ formatDateTime(region.updated_at) }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
-    <!-- Network Planes (树形展示) -->
+    <!-- 网络平面列表 -->
     <el-card shadow="never" class="section-card">
       <template #header>
         <div class="card-header">
-          <span class="card-title">已启用的网络平面</span>
+          <span class="card-title">Region 网络平面</span>
           <div v-if="canManageBusiness" class="header-actions" style="gap: 8px">
-            <el-select v-model="newPlaneTypeId" placeholder="选择网络平面类型" size="small" style="width: 180px" clearable>
-              <el-option
-                v-for="pt in availablePlaneTypes"
-                :key="pt.id"
-                :label="pt.name"
-                :value="pt.id"
-              />
-            </el-select>
-            <div class="scope-input-wrap">
-              <el-input v-model="newPlaneScope" placeholder="作用域 Global" size="small" style="width: 130px" clearable />
-              <el-tooltip
-                content="未填写时保存为 Global；同一 Region 内，同一网络平面类型只能有一个 Global 作用域实例。"
-                placement="top"
-              >
-                <el-icon class="scope-tip-icon"><InfoFilled /></el-icon>
-              </el-tooltip>
-            </div>
-            <el-input v-model="newPlaneCidr" placeholder="CIDR, 如 10.0.0.0/22" size="small" style="width: 200px" clearable />
-            <el-input-number v-model="newPlaneVlanId" placeholder="VLAN" size="small" :min="1" :max="4094" :step="1" :controls="false" style="width: 90px" />
-            <el-input v-model="newPlaneGatewayPosition" placeholder="网关位置" size="small" style="width: 120px" clearable />
-            <el-input
-              v-model="newPlaneGatewayIp"
-              placeholder="网关IP"
-              size="small"
-              style="width: 140px"
-              clearable
-              @focus="fillRecommendedGatewayIp"
-            />
-            <el-button size="small" type="primary" @click="enablePlane" :disabled="!newPlaneTypeId || !newPlaneCidr">启用</el-button>
+            <el-button size="small" type="primary" :icon="Plus" @click="showPlaneDialog">添加</el-button>
           </div>
         </div>
       </template>
-      <div v-if="planeTree.length > 0" class="plane-tree-container">
-        <el-tree
-          :data="planeTree"
-          :props="{ children: 'children', label: 'plane_type_name' }"
-          node-key="id"
-          default-expand-all
-          :expand-on-click-node="false"
-        >
-          <template #default="{ node, data }">
-            <span class="plane-tree-node">
+      <el-table
+        v-if="planeTree.length > 0"
+        :data="planeTree"
+        row-key="id"
+        default-expand-all
+        :tree-props="{ children: 'children' }"
+        stripe
+        border
+        empty-text="尚未配置任何网络平面"
+        table-layout="auto"
+        :fit="false"
+        scrollbar-always-on
+        show-overflow-tooltip
+      >
+        <el-table-column prop="plane_type_name" label="网络平面" min-width="180" class-name="plane-name-column">
+          <template #default="{ row }">
+            <span class="plane-name-cell">
               <el-icon><Connection /></el-icon>
-              <span class="plane-type-name">{{ data.plane_type_name }}</span>
-              <el-tag size="small" effect="plain">{{ data.scope || 'Global' }}</el-tag>
-              <el-tag size="small" type="info" effect="plain" class="plane-cidr-tag">{{ data.cidr }}</el-tag>
-              <el-tag v-if="data.vlan_id" size="small" type="warning" effect="plain">VLAN {{ data.vlan_id }}</el-tag>
-              <el-tag v-if="data.gateway_position" size="small" type="success" effect="plain">{{ data.gateway_position }}</el-tag>
-              <el-tag v-if="data.gateway_ip" size="small" type="success" effect="plain">{{ data.gateway_ip }}</el-tag>
-              <span v-if="canManageBusiness" class="plane-actions">
-                <el-popconfirm
-                  title="确定删除此平面？其所有子平面也将被一并删除"
-                  @confirm="disablePlane(data.id)"
-                >
-                  <template #reference>
-                    <el-button size="small" text type="danger">删除</el-button>
-                  </template>
-                </el-popconfirm>
-              </span>
+              <span>{{ row.plane_type_name }}</span>
             </span>
           </template>
-        </el-tree>
-      </div>
-      <el-empty v-else description="尚未启用任何网络平面" :image-size="80" />
+        </el-table-column>
+        <el-table-column prop="scope" label="作用域" min-width="120">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ row.scope || 'Global' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="cidr" label="CIDR" min-width="160">
+          <template #default="{ row }">
+            <span class="plane-address-text">{{ row.cidr }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="gateway_ip" label="网关IP" min-width="140">
+          <template #default="{ row }">
+            <span class="plane-address-text">{{ row.gateway_ip || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="vlan_id" label="VLAN" width="110" align="center">
+          <template #default="{ row }">
+            <span>{{ row.vlan_id || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="gateway_position" label="网关位置" min-width="160">
+          <template #default="{ row }">{{ row.gateway_position || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="updated_at" label="更新时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
+        </el-table-column>
+        <el-table-column v-if="canManageBusiness" label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="warning" link @click="showEditPlaneDialog(row)">
+              <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
+            </el-button>
+            <el-popconfirm
+              title="确定删除此平面？其所有子平面也将被一并删除"
+              @confirm="disablePlane(row.id)"
+            >
+              <template #reference>
+                <el-button size="small" type="danger" link>
+                  <el-icon style="margin-right: 3px"><Delete /></el-icon>删除
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="尚未配置任何网络平面" :image-size="80" />
     </el-card>
+
+    <el-dialog
+      v-model="planeDialogVisible"
+      :title="isEditPlane ? '编辑 Region 网络平面' : '添加 Region 网络平面'"
+      width="560px"
+      :close-on-click-modal="false"
+      @closed="resetPlaneForm"
+    >
+      <el-form ref="planeFormRef" :model="planeForm" :rules="planeRules" label-width="110px">
+        <el-form-item label="网络平面类型" prop="plane_type_id">
+          <el-tree-select
+            v-model="planeForm.plane_type_id"
+            :data="planeTypeTree"
+            node-key="id"
+            value-key="id"
+            :props="{ label: 'name', children: 'children' }"
+            placeholder="选择网络平面类型"
+            clearable
+            check-strictly
+            default-expand-all
+            :render-after-expand="false"
+            :disabled="isEditPlane"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="作用域" prop="scope">
+          <div class="scope-input-wrap form-scope-input">
+            <el-input v-model="planeForm.scope" placeholder="Global" maxlength="100" clearable />
+            <el-tooltip
+              content="未填写时保存为 Global；同一 Region 内，同一网络平面类型只能有一个 Global 作用域实例。"
+              placement="top"
+            >
+              <el-icon class="scope-tip-icon"><InfoFilled /></el-icon>
+            </el-tooltip>
+          </div>
+        </el-form-item>
+        <el-form-item label="CIDR" prop="cidr">
+          <el-input v-model="planeForm.cidr" placeholder="例如: 10.0.0.0/22" maxlength="43" clearable />
+        </el-form-item>
+        <el-form-item label="VLAN" prop="vlan_id">
+          <el-input v-model="planeForm.vlan_id" placeholder="可选" maxlength="4" clearable />
+        </el-form-item>
+        <el-form-item label="网关位置" prop="gateway_position">
+          <el-input v-model="planeForm.gateway_position" placeholder="可选，例如: Core-A" maxlength="255" clearable />
+        </el-form-item>
+        <el-form-item label="网关IP" prop="gateway_ip">
+          <el-input
+            v-model="planeForm.gateway_ip"
+            placeholder="可选，聚焦时按 CIDR 自动推荐"
+            maxlength="39"
+            clearable
+            @focus="fillRecommendedGatewayIp"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="planeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitPlaneForm" :loading="planeSubmitting">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRegion, enableRegionPlane, disableRegionPlane } from '@/api/regions'
+import { getRegion, enableRegionPlane, updateRegionPlane, disableRegionPlane } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Edit, Delete, Connection, InfoFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Edit, Delete, Connection, InfoFilled, Plus } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
 
 const props = defineProps({ id: String })
@@ -124,19 +193,25 @@ const loading = ref(false)
 const region = ref({ name: '', planes: [] })
 
 // ---- 平面相关状态 ----
-const newPlaneTypeId = ref('')
-const newPlaneScope = ref('Global')
-const newPlaneCidr = ref('')
-const newPlaneVlanId = ref(null)
-const newPlaneGatewayPosition = ref('')
-const newPlaneGatewayIp = ref('')
 const availablePlaneTypes = ref([])
+const planeDialogVisible = ref(false)
+const planeSubmitting = ref(false)
+const planeFormRef = ref(null)
+const planeForm = ref(createEmptyPlaneForm())
+const isEditPlane = ref(false)
+const editingPlaneId = ref('')
 
 // ---- 计算属性 ----
 const planeTree = computed(() => region.value.planes || [])
+const planeTypeTree = computed(() => buildPlaneTypeTree(availablePlaneTypes.value))
 const canManageBusiness = computed(() => appStore.canManageRegionBusiness(props.id))
 
 const desContentStyle = { color: 'var(--color-text-primary)', fontSize: '13px' }
+const planeRules = {
+  plane_type_id: [{ required: true, message: '请选择网络平面类型', trigger: 'change' }],
+  cidr: [{ required: true, message: '请输入 CIDR', trigger: 'blur' }],
+  vlan_id: [{ validator: validateOptionalVlanId, trigger: 'blur' }],
+}
 
 async function fetchRegion() {
   region.value = await getRegion(props.id)
@@ -149,38 +224,128 @@ async function fetchPlanes() {
 
 // ---------- 平面操作 ----------
 
-async function enablePlane() {
-  if (!newPlaneTypeId.value || !newPlaneCidr.value) return
+function createEmptyPlaneForm() {
+  return {
+    plane_type_id: '',
+    scope: 'Global',
+    cidr: '',
+    vlan_id: '',
+    gateway_position: '',
+    gateway_ip: '',
+  }
+}
+
+function buildPlaneTypeTree(sourceItems) {
+  const itemMap = new Map()
+  for (const item of sourceItems) {
+    itemMap.set(item.id, { ...item, children: [], level: 1 })
+  }
+
+  const roots = []
+  for (const item of sourceItems) {
+    const node = itemMap.get(item.id)
+    const parent = item.parent_id ? itemMap.get(item.parent_id) : null
+    if (parent) {
+      parent.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  markPlaneTypeLevel(roots)
+  return roots
+}
+
+function markPlaneTypeLevel(nodes, level = 1) {
+  for (const node of nodes) {
+    node.level = level
+    markPlaneTypeLevel(node.children, level + 1)
+  }
+}
+
+function validateOptionalVlanId(rule, value, callback) {
+  if (!value) {
+    callback()
+    return
+  }
+  if (!/^\d+$/.test(value)) {
+    callback(new Error('VLAN 必须是数字'))
+    return
+  }
+  const vlanId = Number(value)
+  if (vlanId < 1 || vlanId > 4094) {
+    callback(new Error('VLAN 范围为 1-4094'))
+    return
+  }
+  callback()
+}
+
+async function showPlaneDialog() {
+  resetPlaneForm()
+  planeDialogVisible.value = true
+  await nextTick()
+  planeFormRef.value?.clearValidate()
+}
+
+async function showEditPlaneDialog(row) {
+  isEditPlane.value = true
+  editingPlaneId.value = row.id
+  planeForm.value = {
+    plane_type_id: row.plane_type_id,
+    scope: row.scope || 'Global',
+    cidr: row.cidr || '',
+    vlan_id: row.vlan_id ? String(row.vlan_id) : '',
+    gateway_position: row.gateway_position || '',
+    gateway_ip: row.gateway_ip || '',
+  }
+  planeDialogVisible.value = true
+  await nextTick()
+  planeFormRef.value?.clearValidate()
+}
+
+function resetPlaneForm() {
+  planeForm.value = createEmptyPlaneForm()
+  isEditPlane.value = false
+  editingPlaneId.value = ''
+  planeSubmitting.value = false
+  planeFormRef.value?.clearValidate()
+}
+
+async function submitPlaneForm() {
+  const valid = await planeFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  planeSubmitting.value = true
   try {
-    const result = await enableRegionPlane(props.id, {
-      plane_type_id: newPlaneTypeId.value,
-      scope: newPlaneScope.value || 'Global',
-      cidr: newPlaneCidr.value,
-      vlan_id: newPlaneVlanId.value || null,
-      gateway_position: newPlaneGatewayPosition.value || null,
-      gateway_ip: newPlaneGatewayIp.value || null,
-    })
-    ElMessage.success('网络平面已启用')
+    const payload = {
+      scope: planeForm.value.scope || 'Global',
+      cidr: planeForm.value.cidr,
+      vlan_id: planeForm.value.vlan_id ? Number(planeForm.value.vlan_id) : null,
+      gateway_position: planeForm.value.gateway_position || null,
+      gateway_ip: planeForm.value.gateway_ip || null,
+    }
+    const result = isEditPlane.value
+      ? await updateRegionPlane(props.id, editingPlaneId.value, payload)
+      : await enableRegionPlane(props.id, { ...payload, plane_type_id: planeForm.value.plane_type_id })
+    ElMessage.success(isEditPlane.value ? '网络平面已更新' : '网络平面已添加')
     if (result.gateway_ip_warning) {
       ElMessage.warning(result.gateway_ip_warning)
     }
-    newPlaneTypeId.value = ''
-    newPlaneScope.value = 'Global'
-    newPlaneCidr.value = ''
-    newPlaneVlanId.value = null
-    newPlaneGatewayPosition.value = ''
-    newPlaneGatewayIp.value = ''
+    planeDialogVisible.value = false
     await fetchRegion()
     await fetchPlanes()
-  } catch (e) { /* handled by interceptor */ }
+  } catch (e) {
+    // Error handled by Axios interceptor
+  } finally {
+    planeSubmitting.value = false
+  }
 }
 
 function fillRecommendedGatewayIp() {
-  if (newPlaneGatewayIp.value || !newPlaneCidr.value || !newPlaneTypeId.value) return
-  const planeType = availablePlaneTypes.value.find(pt => pt.id === newPlaneTypeId.value)
-  const recommended = recommendedGatewayIp(newPlaneCidr.value, Boolean(planeType?.is_private))
+  if (planeForm.value.gateway_ip || !planeForm.value.cidr || !planeForm.value.plane_type_id) return
+  const planeType = availablePlaneTypes.value.find(pt => pt.id === planeForm.value.plane_type_id)
+  const recommended = recommendedGatewayIp(planeForm.value.cidr, Boolean(planeType?.is_private))
   if (recommended) {
-    newPlaneGatewayIp.value = recommended
+    planeForm.value.gateway_ip = recommended
   }
 }
 
@@ -228,7 +393,7 @@ async function disablePlane(planeId) {
 // ---------- Region 操作 ----------
 
 function editRegion() {
-  ElMessageBox.prompt('区域名称', '编辑区域', { inputValue: region.value.name, inputPattern: /.+/, inputErrorMessage: '名称不能为空' })
+  ElMessageBox.prompt('Region 名称', '编辑 Region', { inputValue: region.value.name, inputPattern: /.+/, inputErrorMessage: '名称不能为空' })
     .then(async ({ value }) => {
       const { updateRegion: updateRegionApi } = await import('@/api/regions')
       await updateRegionApi(props.id, { name: value })
@@ -239,7 +404,7 @@ function editRegion() {
 
 async function deleteRegion() {
   try {
-    await ElMessageBox.confirm('确定删除该区域？所有相关数据将被删除', '警告', { type: 'warning' })
+    await ElMessageBox.confirm('确定删除该 Region？所有相关数据将被删除', '警告', { type: 'warning' })
     const { deleteRegion: deleteRegionApi } = await import('@/api/regions')
     await deleteRegionApi(props.id)
     ElMessage.success('删除成功')
@@ -290,22 +455,20 @@ onMounted(async () => {
   background: var(--color-primary);
   border-radius: 2px;
 }
-.plane-tree-container { padding: 8px 0; }
-.plane-tree-node {
-  display: flex;
+.plane-name-cell {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  padding: 4px 8px;
-  width: 100%;
+  gap: 6px;
+  font-weight: 500;
 }
-.plane-type-name { font-weight: 500; min-width: 80px; }
-.plane-cidr-tag { font-family: 'SF Mono', monospace; }
-.plane-actions { margin-left: auto; display: flex; gap: 4px; }
+.plane-address-text { font-family: 'SF Mono', Menlo, Consolas, monospace; }
 .scope-input-wrap {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.form-scope-input {
+  width: 100%;
 }
 .scope-tip-icon {
   color: var(--color-text-tertiary);
@@ -313,4 +476,20 @@ onMounted(async () => {
   font-size: 15px;
 }
 .form-tip { display: block; color: var(--color-text-tertiary); font-size: 12px; margin-top: 4px; line-height: 1.4; }
+
+:deep(.plane-name-column .cell) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:deep(.plane-name-column .el-table__indent) {
+  flex: 0 0 auto;
+}
+
+:deep(.plane-name-column .el-table__expand-icon),
+:deep(.plane-name-column .el-table__placeholder) {
+  flex: 0 0 20px;
+}
+
 </style>

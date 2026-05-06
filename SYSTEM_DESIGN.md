@@ -259,9 +259,9 @@ erDiagram
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
+Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。CIDR 不允许与其他 Region 网络平面或本 Region 非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
 
-`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
+`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。`vlan_id` 在同一 Region 内不能重复。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
 
 #### change_logs
 
@@ -341,8 +341,8 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|
 | GET/POST | `/api/regions` | 列表/创建 Region；创建需 administrator |
 | GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator |
-| GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/启用指定网络平面类型节点；写入需 Region 业务权限 |
-| DELETE | `/api/regions/{id}/planes/{plane_id}` | 删除 Region 平面节点并级联删除子平面；需 Region 业务权限 |
+| GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/添加指定网络平面类型节点；写入需 Region 业务权限 |
+| PUT/DELETE | `/api/regions/{id}/planes/{plane_id}` | 更新 Region 平面业务字段（不允许修改网络平面类型）/删除平面节点并级联删除子平面；需 Region 业务权限 |
 | POST | `/api/regions/{id}/planes/{plane_id}/children` | 兼容旧接口；当前子平面关系由全局网络平面类型维护 |
 
 #### 网络平面类型
@@ -493,13 +493,16 @@ GET /api/backup/records
 
 **核心约束**：
 
-1. 启用子类型平面时，父级类型必须已在同一 Region 启用。
+1. 添加或更新子类型平面时，父级类型必须已在同一 Region 中存在有效父实例。
 2. 子类型平面优先挂载到同 `scope` 的父平面；如果同 `scope` 父平面不存在，允许回退挂载到 `Global` 父平面；其他作用域的父平面不可作为有效父级。
 3. 子类型平面的 CIDR 必须落在实际挂载父平面的 CIDR 范围内。
-4. 同一父级下已启用的兄弟类型平面 CIDR 不能互相重叠；同一 Region 内同一平面类型的不同 `scope` 实例之间 CIDR 也不能重叠。
-5. 删除某个 Region 下的父平面时，只递归删除实际挂载到该父实例下的子树，避免误删其他 `scope` 的平面实例。
-6. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复启用同一个网络平面类型。
-7. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
+4. CIDR 不允许与其他 Region 的网络平面重叠，也不允许与本 Region 内非有效父子/祖先关系的网络平面重叠；有效父子/祖先关系允许 CIDR 包含关系，但子平面必须落在父平面范围内。
+5. 更新父平面 CIDR 时，已有子孙平面必须仍然落在新的父平面 CIDR 范围内。
+6. 网关 IP 必须位于当前平面 CIDR 范围内；私网平面推荐第一个可用 IP，非私网平面推荐最后一个可用 IP，不符合推荐值只返回提示。
+7. VLAN ID 在同一 Region 内不能重复；为空表示不配置 VLAN。
+8. 删除某个 Region 下的父平面时，只递归删除实际挂载到该父实例下的子树，避免误删其他 `scope` 的平面实例。
+9. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复启用同一个网络平面类型。
+10. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。
 

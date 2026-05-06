@@ -32,6 +32,15 @@ def _enable_plane(client, region_id, pt_id, cidr, user_headers, **kwargs):
     )
 
 
+def _update_plane(client, region_id, plane_id, user_headers, **kwargs):
+    """更新 Region 网络平面并返回响应。"""
+    return client.put(
+        f"/api/regions/{region_id}/planes/{plane_id}",
+        json=kwargs,
+        headers=user_headers,
+    )
+
+
 def test_create_root_plane_with_cidr(client, admin_headers, user_headers_factory):
     """创建根平面时传入 CIDR，校验字段正确返回。"""
     region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
@@ -99,7 +108,46 @@ def test_create_root_plane_rejects_same_type_scope_cidr_overlap(client, admin_he
     resp = _enable_plane(client, region["id"], pt["id"], "10.0.0.128/25", user_headers, scope="业务AZ2")
 
     assert resp.status_code == 409
-    assert "同类型平面 CIDR 重叠" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "本 Region 非层级关系网络平面 CIDR 重叠" in detail
+    assert "Region=TestRegion" in detail
+    assert "网络平面=管理平面" in detail
+    assert "作用域=业务AZ1" in detail
+    assert "CIDR=10.0.0.0/24" in detail
+
+
+def test_create_root_plane_rejects_same_region_unrelated_cidr_overlap(client, admin_headers, user_headers_factory):
+    """创建根平面时不能与本 Region 内其他非层级关系平面 CIDR 重叠。"""
+    region, pt_a, user_headers = _setup(client, admin_headers, user_headers_factory)
+    pt_b = _create_plane_type(client, admin_headers, "业务平面").json()
+    _enable_plane(client, region["id"], pt_a["id"], "10.0.0.0/24", user_headers)
+
+    resp = _enable_plane(client, region["id"], pt_b["id"], "10.0.0.128/25", user_headers)
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "本 Region 非层级关系网络平面 CIDR 重叠" in detail
+    assert "Region=TestRegion" in detail
+    assert "网络平面=管理平面" in detail
+    assert "CIDR=10.0.0.0/24" in detail
+
+
+def test_create_root_plane_rejects_other_region_cidr_overlap(client, admin_headers, user_headers_factory):
+    """创建根平面时不能与其他 Region 的网络平面 CIDR 重叠。"""
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers)
+
+    resp = _enable_plane(client, region_b["id"], pt["id"], "10.0.0.128/25", user_headers)
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "其他 Region 网络平面 CIDR 重叠" in detail
+    assert "Region=RegionA" in detail
+    assert "网络平面=管理平面" in detail
+    assert "CIDR=10.0.0.0/24" in detail
 
 
 def test_create_root_plane_invalid_cidr(client, admin_headers, user_headers_factory):
@@ -117,6 +165,23 @@ def test_create_root_plane_invalid_vlan_id(client, admin_headers, user_headers_f
     resp = _enable_plane(client, region["id"], pt["id"], "10.0.0.0/22", user_headers, vlan_id=4095)
 
     assert resp.status_code == 422
+
+
+def test_create_root_plane_rejects_duplicate_vlan_in_region(client, admin_headers, user_headers_factory):
+    """创建平面时 VLAN ID 在同一 Region 内不能重复。"""
+    region, pt_a, user_headers = _setup(client, admin_headers, user_headers_factory)
+    pt_b = _create_plane_type(client, admin_headers, "业务平面").json()
+    _enable_plane(client, region["id"], pt_a["id"], "10.0.0.0/24", user_headers, vlan_id=100)
+
+    resp = _enable_plane(client, region["id"], pt_b["id"], "10.0.1.0/24", user_headers, vlan_id=100)
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "VLAN 100 已在该 Region 中使用" in detail
+    assert "Region=TestRegion" in detail
+    assert "网络平面=管理平面" in detail
+    assert "CIDR=10.0.0.0/24" in detail
+    assert "VLAN=100" in detail
 
 
 def test_create_root_plane_invalid_gateway_ip(client, admin_headers, user_headers_factory):
@@ -156,6 +221,185 @@ def test_create_public_plane_warns_when_gateway_ip_is_not_last_usable(client, ad
 
     assert resp.status_code == 201
     assert "最后一个可用 IP 10.0.0.254" in resp.json()["gateway_ip_warning"]
+
+
+def test_update_root_plane_fields_but_not_plane_type(client, admin_headers, user_headers_factory):
+    """编辑 Region 网络平面时可更新业务字段，但不能修改网络平面类型。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    other_pt = _create_plane_type(client, admin_headers, "业务平面").json()
+    plane = _enable_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        plane["id"],
+        user_headers,
+        plane_type_id=other_pt["id"],
+        scope="业务AZ1",
+        cidr="10.0.1.0/24",
+        vlan_id=200,
+        gateway_position="Core-A",
+        gateway_ip="10.0.1.254",
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["plane_type_id"] == pt["id"]
+    assert data["scope"] == "业务AZ1"
+    assert data["cidr"] == "10.0.1.0/24"
+    assert data["vlan_id"] == 200
+    assert data["gateway_position"] == "Core-A"
+    assert data["gateway_ip"] == "10.0.1.254"
+
+
+def test_update_plane_rejects_duplicate_scope(client, admin_headers, user_headers_factory):
+    """编辑作用域时仍受同一 (region, plane_type, scope) 唯一约束限制。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    global_plane = _enable_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers).json()
+    _enable_plane(client, region["id"], pt["id"], "10.0.1.0/24", user_headers, scope="业务AZ1")
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        global_plane["id"],
+        user_headers,
+        scope="业务AZ1",
+        cidr="10.0.0.0/24",
+    )
+
+    assert resp.status_code == 409
+    assert "业务AZ1 作用域中启用" in resp.json()["detail"]
+
+
+def test_update_plane_rejects_same_region_cidr_overlap(client, admin_headers, user_headers_factory):
+    """编辑 CIDR 时不能与本 Region 内其他非父子关系平面重叠。"""
+    region, pt_a, user_headers = _setup(client, admin_headers, user_headers_factory)
+    pt_b = _create_plane_type(client, admin_headers, "业务平面").json()
+    _enable_plane(client, region["id"], pt_a["id"], "10.0.0.0/24", user_headers)
+    plane_b = _enable_plane(client, region["id"], pt_b["id"], "10.0.1.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        plane_b["id"],
+        user_headers,
+        cidr="10.0.0.128/25",
+    )
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "本 Region 非层级关系网络平面 CIDR 重叠" in detail
+    assert "Region=TestRegion" in detail
+    assert "网络平面=管理平面" in detail
+    assert "CIDR=10.0.0.0/24" in detail
+
+
+def test_update_plane_rejects_other_region_cidr_overlap(client, admin_headers, user_headers_factory):
+    """编辑 CIDR 时不能与其他 Region 的网络平面重叠。"""
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers)
+    plane_b = _enable_plane(client, region_b["id"], pt["id"], "10.0.1.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region_b["id"],
+        plane_b["id"],
+        user_headers,
+        cidr="10.0.0.128/25",
+    )
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "其他 Region 网络平面 CIDR 重叠" in detail
+    assert "Region=RegionA" in detail
+    assert "网络平面=管理平面" in detail
+    assert "CIDR=10.0.0.0/24" in detail
+
+
+def test_update_child_plane_allows_overlap_with_parent(client, admin_headers, user_headers_factory):
+    """编辑子平面 CIDR 时允许与自己的父级平面存在包含关系。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers)
+    child = _enable_plane(client, region["id"], child_pt["id"], "10.0.0.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        child["id"],
+        user_headers,
+        scope="Global",
+        cidr="10.0.1.0/24",
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["cidr"] == "10.0.1.0/24"
+
+
+def test_update_child_plane_rejects_cidr_outside_parent(client, admin_headers, user_headers_factory):
+    """编辑子平面 CIDR 时仍必须落在父平面 CIDR 范围内。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers)
+    child = _enable_plane(client, region["id"], child_pt["id"], "10.0.0.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        child["id"],
+        user_headers,
+        scope="Global",
+        cidr="192.168.0.0/24",
+    )
+
+    assert resp.status_code == 409
+    assert "范围内" in resp.json()["detail"]
+
+
+def test_update_plane_rejects_gateway_ip_outside_cidr(client, admin_headers, user_headers_factory):
+    """编辑网关 IP 时必须位于当前 CIDR 范围内。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    plane = _enable_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        plane["id"],
+        user_headers,
+        cidr="10.0.0.0/24",
+        gateway_ip="192.168.0.1",
+    )
+
+    assert resp.status_code == 409
+    assert "必须在平面 CIDR" in resp.json()["detail"]
+
+
+def test_update_plane_rejects_duplicate_vlan_in_region(client, admin_headers, user_headers_factory):
+    """编辑 VLAN ID 时同一 Region 内不能重复。"""
+    region, pt_a, user_headers = _setup(client, admin_headers, user_headers_factory)
+    pt_b = _create_plane_type(client, admin_headers, "业务平面").json()
+    _enable_plane(client, region["id"], pt_a["id"], "10.0.0.0/24", user_headers, vlan_id=100)
+    plane_b = _enable_plane(client, region["id"], pt_b["id"], "10.0.1.0/24", user_headers, vlan_id=200).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        plane_b["id"],
+        user_headers,
+        cidr="10.0.1.0/24",
+        vlan_id=100,
+    )
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "VLAN 100 已在该 Region 中使用" in detail
+    assert "Region=TestRegion" in detail
+    assert "网络平面=管理平面" in detail
+    assert "CIDR=10.0.0.0/24" in detail
+    assert "VLAN=100" in detail
 
 
 def test_enable_child_plane(client, admin_headers, user_headers_factory):

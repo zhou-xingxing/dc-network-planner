@@ -59,7 +59,7 @@
         <el-card shadow="never" class="chart-card">
           <template #header>
             <div class="card-header">
-              <span class="card-title">按区域分布</span>
+              <span class="card-title">按 Region 分布</span>
             </div>
           </template>
           <div v-if="stats.plane_by_region.length === 0" class="empty-state">
@@ -134,7 +134,7 @@ const stats = ref({
 const statCards = [
   {
     key: 'total_regions',
-    label: '区域总数',
+    label: 'Region 总数',
     to: '/regions',
     icon: Monitor,
     gradient: 'linear-gradient(135deg, #1a73e8 0%, #4a90d9 100%)',
@@ -172,7 +172,7 @@ function calcPercent(value, total) {
 }
 
 function entityLabel(t) {
-  const map = { region: '区域', network_plane_type: '网络平面类型', region_network_plane: '区域网络平面' }
+  const map = { region: 'Region', network_plane_type: '网络平面类型', region_network_plane: 'Region 网络平面' }
   return map[t] || t
 }
 

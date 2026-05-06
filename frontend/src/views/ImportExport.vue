@@ -83,7 +83,7 @@
             <div style="max-height: 400px; overflow-y: auto; margin-bottom: 16px">
               <el-table :data="previewData.rows" stripe size="small">
                 <el-table-column prop="row_number" label="行" width="50" />
-                <el-table-column prop="region_name" label="区域" width="120" />
+                <el-table-column prop="region_name" label="Region" width="120" />
                 <el-table-column prop="plane_type_name" label="网络平面" width="120" />
                 <el-table-column prop="scope" label="作用域" width="110" />
                 <el-table-column prop="ip_range" label="CIDR" width="140" />
@@ -117,10 +117,10 @@
               <el-tag size="small" type="success" round>导出</el-tag>
               <span>选择过滤条件</span>
             </div>
-            <p class="step-desc">按区域和网络平面过滤要导出的数据，留空则导出全部。</p>
+            <p class="step-desc">按 Region 和网络平面过滤要导出的数据，留空则导出全部。</p>
             <el-form :model="exportForm" label-width="100px" class="export-form">
-              <el-form-item label="区域">
-                <el-select v-model="exportForm.region_id" placeholder="全部区域" clearable style="width: 300px">
+              <el-form-item label="Region">
+                <el-select v-model="exportForm.region_id" placeholder="全部 Region" clearable style="width: 300px">
                   <el-option v-for="r in regions" :key="r.id" :label="r.name" :value="r.id" />
                 </el-select>
               </el-form-item>

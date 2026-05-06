@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h2 class="page-title">IP 查找</h2>
-        <p class="page-desc">按 IP 地址或 CIDR 地址段快速检索所属区域和网络平面</p>
+        <p class="page-desc">按 IP 地址或 CIDR 地址段快速检索所属 Region 和网络平面</p>
       </div>
     </div>
 
@@ -40,7 +40,7 @@
       </template>
       <el-table :data="results" stripe v-loading="searching" empty-text="未找到匹配的网络平面">
         <el-table-column prop="cidr" label="IP地址段" width="160" />
-        <el-table-column prop="region_name" label="所属区域" width="160" />
+        <el-table-column prop="region_name" label="所属 Region" width="160" />
         <el-table-column prop="plane_type_name" label="网络平面" width="120" />
         <el-table-column prop="scope" label="作用域" width="110" />
         <el-table-column prop="vlan_id" label="VLAN ID" width="90" align="center" />

@@ -28,6 +28,10 @@ export function enableRegionPlane(regionId, data) {
   return request.post(`/regions/${regionId}/planes`, data)
 }
 
+export function updateRegionPlane(regionId, planeId, data) {
+  return request.put(`/regions/${regionId}/planes/${planeId}`, data)
+}
+
 export function disableRegionPlane(regionId, planeId) {
   return request.delete(`/regions/${regionId}/planes/${planeId}`)
 }

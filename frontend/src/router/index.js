@@ -25,14 +25,14 @@ const routes = [
         path: 'regions',
         name: 'Regions',
         component: () => import('@/views/Regions.vue'),
-        meta: { title: '区域管理' },
+        meta: { title: 'Region 管理' },
       },
       {
         path: 'regions/:id',
         name: 'RegionDetail',
         component: () => import('@/views/RegionDetail.vue'),
         props: true,
-        meta: { title: '区域详情' },
+        meta: { title: 'Region 详情' },
       },
       {
         path: 'plane-types',

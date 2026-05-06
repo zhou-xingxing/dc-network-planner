@@ -11,9 +11,9 @@
       <el-form :inline="true" :model="filters" label-width="80px">
         <el-form-item label="实体类型">
           <el-select v-model="filters.entity_type" placeholder="全部" clearable style="width: 150px">
-            <el-option label="区域" value="region" />
+            <el-option label="Region" value="region" />
             <el-option label="网络平面类型" value="network_plane_type" />
-            <el-option label="区域网络平面" value="region_network_plane" />
+            <el-option label="Region 网络平面" value="region_network_plane" />
           </el-select>
         </el-form-item>
         <el-form-item label="操作类型">
@@ -86,7 +86,7 @@ const filters = reactive({
 })
 
 function entityTypeLabel(t) {
-  const map = { region: '区域', network_plane_type: '网络平面类型', region_network_plane: '区域网络平面' }
+  const map = { region: 'Region', network_plane_type: '网络平面类型', region_network_plane: 'Region 网络平面' }
   return map[t] || t
 }
 

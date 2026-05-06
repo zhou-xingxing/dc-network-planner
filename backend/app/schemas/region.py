@@ -85,5 +85,35 @@ class RegionPlaneCreate(BaseModel):
         return value
 
 
+class RegionPlaneUpdate(BaseModel):
+    scope: str | None = Field(None, max_length=100, description="作用域，空值会归一化为 Global")
+    cidr: str | None = Field(None, max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
+    vlan_id: int | None = Field(None, ge=1, le=4094)
+    gateway_position: str | None = Field(None, max_length=255)
+    gateway_ip: str | None = Field(None, max_length=39)
+
+    @field_validator("scope")
+    @classmethod
+    def normalize_scope(cls, value: str | None) -> str | None:
+        """归一化可选网络平面作用域，空字符串统一视为 Global。"""
+        if value is None:
+            return None
+        value = value.strip()
+        return value or "Global"
+
+    @field_validator("gateway_ip")
+    @classmethod
+    def validate_gateway_ip(cls, value: str | None) -> str | None:
+        """校验可选网关 IP 地址格式。"""
+        if value is None:
+            return None
+        value = value.strip()
+        if value == "":
+            return None
+        if not parse_ip(value):
+            raise ValueError("网关 IP 地址格式无效")
+        return value
+
+
 class ChildPlaneCreate(BaseModel):
     cidr: str = Field(..., max_length=43, description="子网 CIDR，必须在父平面 CIDR 范围内")

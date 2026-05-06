@@ -32,7 +32,7 @@
       </el-menu-item>
       <el-menu-item index="/regions">
         <el-icon><Location /></el-icon>
-        <span>区域管理</span>
+        <span>Region 管理</span>
       </el-menu-item>
       <el-menu-item index="/plane-types">
         <el-icon><Connection /></el-icon>

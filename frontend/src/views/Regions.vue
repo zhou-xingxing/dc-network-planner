@@ -2,15 +2,15 @@
   <div>
     <div class="page-heading">
       <div>
-        <h2 class="page-title">区域管理</h2>
-        <p class="page-desc">管理所有 HCS 云平台区域，查看和配置各区域的网络平面</p>
+        <h2 class="page-title">Region 管理</h2>
+        <p class="page-desc">管理所有 HCS 云平台 Region，查看和配置各 Region 的网络平面</p>
       </div>
-      <el-button v-if="appStore.isAdministrator" type="primary" @click="showCreateDialog" :icon="Plus">添加区域</el-button>
+      <el-button v-if="appStore.isAdministrator" type="primary" @click="showCreateDialog" :icon="Plus">添加 Region</el-button>
     </div>
 
     <el-card shadow="never">
-      <el-table :data="regions" stripe v-loading="loading" empty-text="暂无区域">
-        <el-table-column prop="name" label="区域名称" min-width="160">
+      <el-table :data="regions" stripe v-loading="loading" empty-text="暂无 Region">
+        <el-table-column prop="name" label="Region 名称" min-width="160">
           <template #default="{ row }">
             <span class="link-text" @click="viewRegion(row)">{{ row.name }}</span>
           </template>
@@ -32,7 +32,7 @@
             <el-button v-if="appStore.isAdministrator" size="small" type="warning" link @click="showEditDialog(row)">
               <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
             </el-button>
-            <el-popconfirm v-if="appStore.isAdministrator" title="确定删除该区域？" @confirm="handleDelete(row.id)">
+            <el-popconfirm v-if="appStore.isAdministrator" title="确定删除该 Region？" @confirm="handleDelete(row.id)">
               <template #reference>
                 <el-button size="small" type="danger" link>
                   <el-icon style="margin-right: 3px"><Delete /></el-icon>删除
@@ -53,9 +53,9 @@
       />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑区域' : '添加区域'" width="500px" :close-on-click-modal="false">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑 Region' : '添加 Region'" width="500px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="区域名称" prop="name">
+        <el-form-item label="Region 名称" prop="name">
           <el-input v-model="form.name" placeholder="例如: HCS华北-北京" maxlength="100" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
@@ -94,7 +94,7 @@ const formRef = ref(null)
 const form = ref({ name: '', description: '' })
 
 const rules = {
-  name: [{ required: true, message: '请输入区域名称', trigger: 'blur' }],
+  name: [{ required: true, message: '请输入 Region 名称', trigger: 'blur' }],
 }
 
 async function fetchData() {

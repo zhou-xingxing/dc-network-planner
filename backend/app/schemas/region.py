@@ -113,7 +113,3 @@ class RegionPlaneUpdate(BaseModel):
         if not parse_ip(value):
             raise ValueError("网关 IP 地址格式无效")
         return value
-
-
-class ChildPlaneCreate(BaseModel):
-    cidr: str = Field(..., max_length=43, description="子网 CIDR，必须在父平面 CIDR 范围内")

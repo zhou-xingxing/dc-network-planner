@@ -290,6 +290,8 @@ cp -n .env.example .env
 | `BOOTSTRAP_ADMIN_DISPLAY_NAME` | 初始管理员显示名，仅在 `users` 表为空时自动创建 |
 | `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录 |
 | `BACKUP_SCHEDULER_INTERVAL_SECONDS` | 后台备份调度扫描周期 |
+| `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | 是否允许 CIDR 跨 Region 重叠；启动后不应变更 |
+| `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | 是否允许 VLAN 跨 Region 重复；启动后不应变更 |
 
 Docker 部署时也可以通过环境变量覆盖这些配置；Compose 默认将后端数据库写入持久化 volume。
 
@@ -390,11 +392,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 61 | 4,401 |
-| 后端测试 | 15 | 2,002 |
+| 后端代码 | 63 | 4,488 |
+| 后端测试 | 15 | 2,110 |
 | 前端代码 | 29 | 3,215 |
 | 前端测试 | 0 | 0 |
-| 合计 | 105 | 9,618 |
+| 合计 | 107 | 9,813 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

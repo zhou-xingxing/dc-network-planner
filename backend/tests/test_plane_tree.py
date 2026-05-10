@@ -3,6 +3,11 @@
 覆盖：网络平面类型父子关系、Region 启用平面、CIDR 约束校验、树形结构查询、级联删除。
 """
 
+import pytest
+from sqlalchemy.orm import Session
+
+from app.services import region_plane as region_plane_service
+
 
 def _create_plane_type(client, admin_headers, name, parent_id=None, **kwargs):
     """创建网络平面类型。"""
@@ -165,6 +170,44 @@ def test_create_root_plane_rejects_other_region_cidr_overlap(client, admin_heade
     assert "CIDR=10.0.0.0/24" in detail
 
 
+def test_create_root_plane_allows_other_region_cidr_overlap_when_configured(
+    client,
+    admin_headers,
+    user_headers_factory,
+    monkeypatch,
+):
+    """配置允许时，CIDR 可以跨 Region 重叠。"""
+    monkeypatch.setattr(region_plane_service.settings, "ALLOW_CIDR_OVERLAP_ACROSS_REGIONS", True)
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers)
+
+    resp = _enable_plane(client, region_b["id"], pt["id"], "10.0.0.128/25", user_headers)
+
+    assert resp.status_code == 201
+    assert resp.json()["cidr"] == "10.0.0.128/25"
+
+
+def test_create_root_plane_keeps_same_region_cidr_overlap_rejection_when_cross_region_allowed(
+    client,
+    admin_headers,
+    user_headers_factory,
+    monkeypatch,
+):
+    """配置只放宽跨 Region，本 Region 非层级 CIDR 重叠仍拒绝。"""
+    monkeypatch.setattr(region_plane_service.settings, "ALLOW_CIDR_OVERLAP_ACROSS_REGIONS", True)
+    region, pt_a, user_headers = _setup(client, admin_headers, user_headers_factory)
+    pt_b = _create_plane_type(client, admin_headers, "业务平面").json()
+    _enable_plane(client, region["id"], pt_a["id"], "10.0.0.0/24", user_headers)
+
+    resp = _enable_plane(client, region["id"], pt_b["id"], "10.0.0.128/25", user_headers)
+
+    assert resp.status_code == 409
+    assert "本 Region 非层级关系网络平面 CIDR 重叠" in resp.json()["detail"]
+
+
 def test_create_root_plane_invalid_cidr(client, admin_headers, user_headers_factory):
     """创建根平面时传入无效 CIDR 应报错。"""
     region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
@@ -197,6 +240,46 @@ def test_create_root_plane_rejects_duplicate_vlan_in_region(client, admin_header
     assert "网络平面=管理平面" in detail
     assert "CIDR=10.0.0.0/24" in detail
     assert "VLAN=100" in detail
+
+
+def test_create_root_plane_allows_duplicate_vlan_across_regions_by_default(
+    client,
+    admin_headers,
+    user_headers_factory,
+):
+    """默认配置下 VLAN 只要求 Region 内唯一，跨 Region 可重复。"""
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers, vlan_id=100)
+
+    resp = _enable_plane(client, region_b["id"], pt["id"], "10.0.1.0/24", user_headers, vlan_id=100)
+
+    assert resp.status_code == 201
+    assert resp.json()["vlan_id"] == 100
+
+
+def test_create_root_plane_rejects_duplicate_vlan_across_regions_when_configured(
+    client,
+    admin_headers,
+    user_headers_factory,
+    monkeypatch,
+):
+    """配置不允许时，VLAN 跨 Region 重复也会被拒绝。"""
+    monkeypatch.setattr(region_plane_service.settings, "ALLOW_VLAN_OVERLAP_ACROSS_REGIONS", False)
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers, vlan_id=100)
+
+    resp = _enable_plane(client, region_b["id"], pt["id"], "10.0.1.0/24", user_headers, vlan_id=100)
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert "VLAN 100 已被其他 Region 使用" in detail
+    assert "Region=RegionA" in detail
 
 
 def test_create_root_plane_invalid_gateway_ip(client, admin_headers, user_headers_factory):
@@ -482,6 +565,55 @@ def test_create_child_unrelated_ok(client, admin_headers, user_headers_factory):
     resp = _enable_plane(client, region["id"], child_b["id"], "10.0.1.0/24", user_headers)
 
     assert resp.status_code == 201
+
+
+def test_validate_network_overlap_policy_on_startup_rejects_existing_cross_region_cidr_conflict(
+    test_db,
+    client,
+    admin_headers,
+    user_headers_factory,
+    monkeypatch,
+):
+    """启动检查会拒绝与当前 CIDR 跨 Region 策略不一致的已有数据。"""
+    monkeypatch.setattr(region_plane_service.settings, "ALLOW_CIDR_OVERLAP_ACROSS_REGIONS", True)
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers)
+    _enable_plane(client, region_b["id"], pt["id"], "10.0.0.128/25", user_headers)
+    monkeypatch.setattr(region_plane_service.settings, "ALLOW_CIDR_OVERLAP_ACROSS_REGIONS", False)
+
+    session = Session(test_db)
+    try:
+        with pytest.raises(region_plane_service.BusinessError, match="跨 Region CIDR 重叠"):
+            region_plane_service.validate_network_overlap_policy_on_startup(session)
+    finally:
+        session.close()
+
+
+def test_validate_network_overlap_policy_on_startup_rejects_existing_cross_region_vlan_conflict(
+    test_db,
+    client,
+    admin_headers,
+    user_headers_factory,
+    monkeypatch,
+):
+    """启动检查会拒绝与当前 VLAN 跨 Region 策略不一致的已有数据。"""
+    region_a = client.post("/api/regions", json={"name": "RegionA"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "RegionB"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "管理平面").json()
+    user_headers = user_headers_factory([region_a["id"], region_b["id"]])
+    _enable_plane(client, region_a["id"], pt["id"], "10.0.0.0/24", user_headers, vlan_id=100)
+    _enable_plane(client, region_b["id"], pt["id"], "10.0.1.0/24", user_headers, vlan_id=100)
+    monkeypatch.setattr(region_plane_service.settings, "ALLOW_VLAN_OVERLAP_ACROSS_REGIONS", False)
+
+    session = Session(test_db)
+    try:
+        with pytest.raises(region_plane_service.BusinessError, match="跨 Region VLAN 重复"):
+            region_plane_service.validate_network_overlap_policy_on_startup(session)
+    finally:
+        session.close()
 
 
 def test_create_child_depth_exceeded(client, admin_headers):

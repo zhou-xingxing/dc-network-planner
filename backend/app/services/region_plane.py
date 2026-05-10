@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region_network_plane import RegionNetworkPlane
@@ -169,11 +170,6 @@ def enable_plane_for_region(
         ),
     )
     return rp, gateway_ip_warning
-
-
-def create_child_plane(db: Session, region_id: str, parent_id: str, cidr: str, operator: str) -> RegionNetworkPlane:
-    """兼容旧接口：子平面关系现在由 NetworkPlaneType.parent_id 维护。"""
-    raise BusinessError("子平面关系由网络平面类型维护，请启用对应的子级网络平面类型")
 
 
 def update_plane_for_region(
@@ -395,7 +391,7 @@ def _validate_plane_assignment(
     if not net:
         raise BusinessError(f"无效的 CIDR 格式: {cidr}")
 
-    _validate_vlan_unique_in_region(
+    _validate_vlan_assignment_by_policy(
         db,
         region_id,
         vlan_id,
@@ -408,16 +404,24 @@ def _validate_plane_assignment(
         related_plane_ids.extend(_collect_descendant_ids(db, current_plane))
         _ensure_descendants_within_cidr(db, current_plane, net, cidr)
 
-    overlaps = _find_overlapping_region_planes(db, cidr, exclude_plane_ids=set(related_plane_ids))
+    overlaps = _find_cidr_overlaps_for_assignment(
+        db,
+        cidr,
+        region_id=region_id if settings.ALLOW_CIDR_OVERLAP_ACROSS_REGIONS else None,
+        exclude_plane_ids=set(related_plane_ids),
+    )
     if overlaps:
         same_region = [plane for plane in overlaps if plane.region_id == region_id]
-        other_region = [plane for plane in overlaps if plane.region_id != region_id]
+        other_region = []
+        if not settings.ALLOW_CIDR_OVERLAP_ACROSS_REGIONS:
+            other_region = [plane for plane in overlaps if plane.region_id != region_id]
         messages = []
         if same_region:
             messages.append(f"与本 Region 非层级关系网络平面 CIDR 重叠：{_format_plane_refs(same_region)}")
         if other_region:
             messages.append(f"与其他 Region 网络平面 CIDR 重叠：{_format_plane_refs(other_region)}")
-        raise BusinessError("；".join(messages))
+        if messages:
+            raise BusinessError("；".join(messages))
 
     if plane_type.parent_id:
         parent_plane = _find_parent_plane(db, region_id, plane_type.parent_id, scope)
@@ -434,26 +438,28 @@ def _validate_plane_assignment(
     return _validate_gateway_ip_policy(net, gateway_ip, is_private=plane_type.is_private)
 
 
-def _validate_vlan_unique_in_region(
+def _validate_vlan_assignment_by_policy(
     db: Session,
     region_id: str,
     vlan_id: int | None,
     *,
     exclude_plane_id: str | None = None,
 ) -> None:
+    """写入时按当前跨 Region 策略校验 VLAN 是否重复。"""
     if vlan_id is None:
         return
-    existing = (
-        db.query(RegionNetworkPlane)
-        .filter(
-            RegionNetworkPlane.region_id == region_id,
-            RegionNetworkPlane.vlan_id == vlan_id,
-            RegionNetworkPlane.id != exclude_plane_id,
-        )
-        .first()
-    )
+
+    query = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.vlan_id == vlan_id)
+    if exclude_plane_id is not None:
+        query = query.filter(RegionNetworkPlane.id != exclude_plane_id)
+    if settings.ALLOW_VLAN_OVERLAP_ACROSS_REGIONS:
+        query = query.filter(RegionNetworkPlane.region_id == region_id)
+
+    existing = query.first()
     if existing:
-        raise BusinessError(f"VLAN {vlan_id} 已在该 Region 中使用：{_format_plane_ref(existing)}")
+        if existing.region_id == region_id:
+            raise BusinessError(f"VLAN {vlan_id} 已在该 Region 中使用：{_format_plane_ref(existing)}")
+        raise BusinessError(f"VLAN {vlan_id} 已被其他 Region 使用：{_format_plane_ref(existing)}")
 
 
 def _collect_effective_ancestor_ids(
@@ -490,16 +496,21 @@ def _ensure_descendants_within_cidr(
             raise BusinessError(f"子平面 CIDR {child.cidr} 必须在父平面 CIDR {cidr} 范围内")
 
 
-def _find_overlapping_region_planes(
+def _find_cidr_overlaps_for_assignment(
     db: Session,
     cidr: str,
     *,
+    region_id: str | None = None,
     exclude_plane_ids: set[str],
 ) -> list[RegionNetworkPlane]:
+    """写入时查找与目标 CIDR 重叠的已有网络平面。"""
     net = parse_cidr(cidr)
     if not net:
         return []
-    rows = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.cidr.isnot(None)).all()
+    query = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.cidr.isnot(None))
+    if region_id is not None:
+        query = query.filter(RegionNetworkPlane.region_id == region_id)
+    rows = query.all()
     overlapped = []
     for plane in rows:
         if plane.id in exclude_plane_ids or not plane.cidr:
@@ -508,6 +519,65 @@ def _find_overlapping_region_planes(
         if other_net and other_net.version == net.version and other_net.overlaps(net):
             overlapped.append(plane)
     return overlapped
+
+
+def validate_network_overlap_policy_on_startup(db: Session) -> None:
+    """校验当前数据库数据是否满足当前启动配置中的跨 Region 重叠策略。"""
+    messages: list[str] = []
+    if not settings.ALLOW_CIDR_OVERLAP_ACROSS_REGIONS:
+        messages.extend(_find_startup_cross_region_cidr_violations(db))
+    if not settings.ALLOW_VLAN_OVERLAP_ACROSS_REGIONS:
+        messages.extend(_find_startup_cross_region_vlan_violations(db))
+    if messages:
+        raise BusinessError("当前数据库数据不满足网络重叠检测配置：" + "；".join(messages))
+
+
+def _find_startup_cross_region_cidr_violations(db: Session) -> list[str]:
+    """启动时查找已有根平面数据中的跨 Region CIDR 重叠。"""
+    rows = (
+        db.query(RegionNetworkPlane)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+        .filter(
+            RegionNetworkPlane.cidr.isnot(None),
+            NetworkPlaneType.parent_id.is_(None),
+        )
+        .all()
+    )
+    parsed_planes: list[tuple[RegionNetworkPlane, IPNetwork]] = []
+    messages: list[str] = []
+    for plane in rows:
+        if not plane.cidr:
+            continue
+        net = parse_cidr(plane.cidr)
+        if not net:
+            messages.append(f"已有网络平面 CIDR 格式无效：{_format_plane_ref(plane)}")
+            continue
+        for existing_plane, existing_net in parsed_planes:
+            if existing_plane.region_id == plane.region_id:
+                continue
+            if existing_net.version == net.version and existing_net.overlaps(net):
+                messages.append(
+                    f"跨 Region CIDR 重叠：{_format_plane_ref(existing_plane)} <-> {_format_plane_ref(plane)}"
+                )
+        parsed_planes.append((plane, net))
+    return messages
+
+
+def _find_startup_cross_region_vlan_violations(db: Session) -> list[str]:
+    """启动时查找已有数据中的跨 Region VLAN 重复。"""
+    rows = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.vlan_id.isnot(None)).all()
+    seen_by_vlan: dict[int, list[RegionNetworkPlane]] = {}
+    messages: list[str] = []
+    for plane in rows:
+        if plane.vlan_id is None:
+            continue
+        for existing_plane in seen_by_vlan.get(plane.vlan_id, []):
+            if existing_plane.region_id != plane.region_id:
+                messages.append(
+                    f"跨 Region VLAN 重复：{_format_plane_ref(existing_plane)} <-> {_format_plane_ref(plane)}"
+                )
+        seen_by_vlan.setdefault(plane.vlan_id, []).append(plane)
+    return messages
 
 
 def _format_plane_refs(planes: list[RegionNetworkPlane]) -> str:

@@ -252,16 +252,16 @@ erDiagram
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
 | plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 启用的平面类型 |
 | scope | String(100) | NOT NULL, default="Global", UNIQUE(region_id, plane_type_id, scope) | 平面实例作用域，如业务AZ1；Global 表示作用域为全局 |
-| cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
-| vlan_id | Integer | NULLABLE, 1-4094 | VLAN ID |
+| cidr | String(43) | NOT NULL | CIDR 地址段，如 "10.0.0.0/22" |
+| vlan_id | Integer | NULLABLE, INDEX, 1-4094 | VLAN ID |
 | gateway_position | String(255) | NULLABLE | 网关位置，如一对交换机设备名称或端口位置 |
 | gateway_ip | String(39) | NULLABLE | 网关 IP 地址 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。CIDR 不允许与其他 Region 网络平面或本 Region 非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
+Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。Region 内 CIDR 不允许与非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。CIDR 是否允许跨 Region 重叠由启动期静态配置 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 
-`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。`vlan_id` 在同一 Region 内不能重复。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
+`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。`vlan_id` 在同一 Region 内不能重复，是否允许跨 Region 重复由启动期静态配置 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空时不参与重复性检查。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
 
 #### change_logs
 
@@ -343,7 +343,6 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator |
 | GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/添加指定网络平面类型节点；写入需 Region 业务权限 |
 | PUT/DELETE | `/api/regions/{id}/planes/{plane_id}` | 更新 Region 平面业务字段（不允许修改网络平面类型）/删除平面节点并级联删除子平面；需 Region 业务权限 |
-| POST | `/api/regions/{id}/planes/{plane_id}/children` | 兼容旧接口；当前子平面关系由全局网络平面类型维护 |
 
 #### 网络平面类型
 
@@ -506,13 +505,14 @@ GET /api/backup/records
 1. 添加或更新子类型平面时，父级类型必须已在同一 Region 中存在有效父实例。
 2. 子类型平面优先挂载到同 `scope` 的父平面；如果同 `scope` 父平面不存在，允许回退挂载到 `Global` 父平面；其他作用域的父平面不可作为有效父级。
 3. 子类型平面的 CIDR 必须落在实际挂载父平面的 CIDR 范围内。
-4. CIDR 不允许与其他 Region 的网络平面重叠，也不允许与本 Region 内非有效父子/祖先关系的网络平面重叠；有效父子/祖先关系允许 CIDR 包含关系，但子平面必须落在父平面范围内。
+4. Region 内 CIDR 不允许与非有效父子/祖先关系的网络平面重叠；有效父子/祖先关系允许 CIDR 包含关系，但子平面必须落在父平面范围内。CIDR 是否允许跨 Region 重叠由 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 5. 更新父平面 CIDR 时，已有子孙平面必须仍然落在新的父平面 CIDR 范围内。
 6. 网关 IP 必须位于当前平面 CIDR 范围内；私网平面推荐第一个可用 IP，非私网平面推荐最后一个可用 IP，不符合推荐值只返回提示。
-7. VLAN ID 在同一 Region 内不能重复；为空表示不配置 VLAN。
+7. VLAN ID 在同一 Region 内不能重复，是否允许跨 Region 重复由 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空表示不配置 VLAN，且不参与重复性检查。
 8. 删除某个 Region 下的父平面时，只递归删除实际挂载到该父实例下的子树，避免误删其他 `scope` 的平面实例。
 9. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复启用同一个网络平面类型。
-10. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
+10. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
+11. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。
 
@@ -660,6 +660,13 @@ Docker 部署可直接通过容器环境变量覆盖配置。
 
 生产环境必须覆盖 `JWT_SECRET_KEY`、`BOOTSTRAP_ADMIN_PASSWORD` 等安全相关默认值。`backend/.env`
 属于本地私有配置，不应提交到仓库；仓库只提交 `backend/.env.example` 作为配置模板。
+
+网络重叠检测策略属于部署级静态配置，不通过数据库或前端页面修改。应用启动时会按当前配置校验已有数据；如果现有数据与更严格的配置不一致，后端启动失败，避免运行期才暴露历史数据冲突。启动期 CIDR 跨 Region 检查只比较根平面实例，因为子孙平面写入时已保证落在父级 CIDR 范围内。
+
+| 配置项 | 默认值 | 说明 |
+|---|---:|---|
+| `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | `false` | 是否允许 CIDR 跨 Region 重叠；Region 内父子/非父子重叠规则不变 |
+| `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | `true` | 是否允许 VLAN ID 跨 Region 重复；同一 Region 内始终不能重复 |
 
 ### Docker 部署架构
 

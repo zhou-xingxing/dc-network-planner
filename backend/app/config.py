@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     BACKUP_DEFAULT_LOCAL_PATH: str = "./backups"  # 本地备份文件默认存放目录
     BACKUP_SCHEDULER_INTERVAL_SECONDS: int = 60  # 备份调度器扫描周期（秒）
 
+    # --- 网络地址重叠检测策略（启动后不应变更） ---
+    ALLOW_CIDR_OVERLAP_ACROSS_REGIONS: bool = False  # 是否允许 CIDR 跨 Region 重叠
+    ALLOW_VLAN_OVERLAP_ACROSS_REGIONS: bool = True  # 是否允许 VLAN 跨 Region 重复
+
     # --- CORS ---
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",

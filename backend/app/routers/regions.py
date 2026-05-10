@@ -14,7 +14,6 @@ from app.exceptions import BusinessError
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.region import (
-    ChildPlaneCreate,
     RegionCreate,
     RegionDetailResponse,
     RegionPlaneCreate,
@@ -30,7 +29,6 @@ from app.services.region import (
     update_region,
 )
 from app.services.region_plane import (
-    create_child_plane,
     disable_plane_for_region,
     enable_plane_for_region,
     get_region_plane_tree,
@@ -204,27 +202,6 @@ def update_plane_endpoint(
     if not rp:
         raise HTTPException(status_code=404, detail="Region plane association not found")
     return _serialize_region_plane(db, rp, gateway_ip_warning)
-
-
-@router.post("/{region_id}/planes/{plane_id}/children", status_code=201)
-def create_child_plane_endpoint(
-    region_id: str,
-    plane_id: str,
-    data: ChildPlaneCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_region_business_write),
-) -> dict[str, Any]:
-    """兼容旧接口：子平面关系现在由全局网络平面类型树维护。"""
-    from app.services.region import get_region
-
-    region = get_region(db, region_id)
-    if not region:
-        raise HTTPException(status_code=404, detail="Region not found")
-    try:
-        create_child_plane(db, region_id, plane_id, data.cidr, operator_name(current_user))
-    except BusinessError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    raise HTTPException(status_code=410, detail="子平面关系由网络平面类型维护")
 
 
 @router.delete("/{region_id}/planes/{plane_id}", status_code=204)

@@ -20,6 +20,7 @@ from app.routers import (
 from app.services.auth import ensure_bootstrap_admin
 from app.services.backup import ensure_backup_config
 from app.services.backup_scheduler import backup_scheduler
+from app.services.region_plane import validate_network_overlap_policy_on_startup
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         ensure_bootstrap_admin(db)
         ensure_backup_config(db)
+        validate_network_overlap_policy_on_startup(db)
         db.commit()
     except Exception:
         db.rollback()

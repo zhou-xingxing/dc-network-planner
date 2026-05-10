@@ -24,7 +24,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 
 1. 先创建**网络平面类型**（如管理平面、业务平面等）— 这是全局字典
 2. 创建 **Region**（如 HCS华北-北京）
-3. 进入 Region 详情页，为该 Region **启用**需要的网络平面类型，并填写 CIDR、VLAN ID、网关位置和网关 IP
+3. 进入 Region 详情页，为该 Region **添加**需要的网络平面类型，并填写 CIDR、VLAN ID、网关位置和网关 IP
 4. 需要查重时使用 **IP 查找** 功能
 5. 需要批量导入时使用 **导入** 功能（先下载模板填写后上传）
 6. 所有操作在 **变更历史** 中可追溯
@@ -96,7 +96,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 │   │   ├── script.py.mako                # 迁移脚本模板
 │   │   └── versions/                     # 迁移版本文件（初始表、认证、备份、平面树、scope 等）
 │   ├── alembic.ini                       # Alembic 配置
-│   ├── .env                              # 环境变量
+│   ├── .env.example                      # 后端环境变量示例，复制为 .env 后使用
 │   ├── requirements.txt                  # Python 依赖
 │   ├── pyproject.toml                    # Python 项目配置
 │   ├── Makefile                          # make lint / make test / make check
@@ -180,7 +180,7 @@ Docker 部署文件：
 ### 前提条件
 
 - Python >= 3.12
-- Node.js >= 18
+- Node.js >= 20
 - npm >= 9
 
 ### 步骤 1：启动后端
@@ -189,23 +189,29 @@ Docker 部署文件：
 
 ```bash
 cd ./backend
+cp -n .env.example .env  # 首次运行时复制，可按需修改
 bash start.sh
 ```
 
-也可以手动执行以下步骤。后端命令请始终在 `backend/` 目录下运行；本地 SQLite 默认数据库为 `backend/hcs_lld.db`，配置从 `backend/.env` 加载。
+也可以手动执行以下步骤。后端命令请始终在 `backend/` 目录下运行；本地 SQLite 默认数据库为 `backend/hcs_lld.db`，配置从 `backend/.env` 加载。`backend/.env` 不提交到仓库，首次运行可从 `backend/.env.example` 复制生成。
 
 ```bash
 cd ./backend
 
-# 创建并激活虚拟环境（首次运行）
+# 复制环境变量示例（首次运行）
+cp -n .env.example .env
+
+# 创建虚拟环境（首次运行）
 python3 -m venv venv
+
+# 激活虚拟环境
 source venv/bin/activate
 
 # 安装依赖（首次运行）
 pip install -r requirements.txt
 pip install -e .
 
-# 执行数据库迁移（首次运行）
+# 执行 / 更新数据库迁移
 alembic upgrade head
 
 # 启动后端服务
@@ -217,7 +223,22 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - API 文档: http://localhost:8000/docs
 - 健康检查: http://localhost:8000/api/health
 
+首次启动时，后端会自动创建初始管理员账户：
+- 用户名：`admin`
+- 密码：`admin`
+
+生产环境请在 `backend/.env` 中修改初始管理员用户名、密码和 `JWT_SECRET_KEY` 配置。
+
 ### 步骤 2：启动前端
+
+推荐使用前端启动脚本：
+
+```bash
+cd ./frontend
+bash start.sh
+```
+
+也可以手动执行以下步骤。
 
 ```bash
 cd ./frontend
@@ -235,6 +256,8 @@ npm run dev
 
 ### 步骤 3：初始化示例数据（可选）
 
+执行前请先完成后端依赖安装；脚本仅在当前数据库还没有 Region 时写入示例数据，已有数据时会自动跳过。
+
 ```bash
 cd ./backend
 source venv/bin/activate
@@ -246,15 +269,29 @@ python seed.py
 - 5 种网络平面类型：管理平面、业务平面、存储平面、内部通信平面、BMC平面
 - 每个 Region 启用示例网络平面，并带有 CIDR、VLAN 和网关信息
 
-## 快速启动脚本
+## 配置说明
+
+后端配置从 `backend/.env` 加载。仓库只提交 `backend/.env.example`，本地运行时复制为 `backend/.env` 后按需修改：
 
 ```bash
-# 后端，会自动进入脚本所在目录、执行迁移并启动服务
-cd backend && bash start.sh
-
-# 前端 (新终端窗口)
-cd frontend && bash start.sh
+cd ./backend
+cp -n .env.example .env
 ```
+
+常用配置项：
+
+| 配置项 | 说明 |
+|---|---|
+| `DATABASE_URL` | SQLAlchemy 数据库连接地址，本地默认使用 `backend/hcs_lld.db` |
+| `APP_TIMEZONE` | 应用业务时区，用于解释定时备份 cron 等业务时间 |
+| `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须改成高强度随机值 |
+| `BOOTSTRAP_ADMIN_USERNAME` | 初始管理员用户名，仅在 `users` 表为空时自动创建 |
+| `BOOTSTRAP_ADMIN_PASSWORD` | 初始管理员密码，仅在 `users` 表为空时自动创建 |
+| `BOOTSTRAP_ADMIN_DISPLAY_NAME` | 初始管理员显示名，仅在 `users` 表为空时自动创建 |
+| `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录 |
+| `BACKUP_SCHEDULER_INTERVAL_SECONDS` | 后台备份调度扫描周期 |
+
+Docker 部署时也可以通过环境变量覆盖这些配置；Compose 默认将后端数据库写入持久化 volume。
 
 ## 运行测试 & 代码检查
 

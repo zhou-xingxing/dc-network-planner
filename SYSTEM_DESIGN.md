@@ -456,7 +456,7 @@ GET /api/backup/records
 4. `administrator` 可以管理其他用户账号，但不能删除当前登录用户。
 5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
 6. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
-7. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
+7. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
 ### 5.5 启动初始化
@@ -636,8 +636,20 @@ GET /api/backup/records
 
 ### 环境要求
 
-- 开发环境：Python >= 3.12, Node.js >= 18
+- 开发环境：Python >= 3.12, Node.js >= 20
 - Docker 部署：Docker >= 24.0, Docker Compose >= 2.0
+
+### 后端配置加载策略
+
+后端配置由 `backend/app/config.py` 中的 `Settings` 类统一定义，字段默认值也集中在该类中。`Settings`
+继承 Pydantic Settings，并通过 `model_config.env_file` 显式读取 `backend/.env`。
+
+配置优先级为：系统环境变量 > `backend/.env` > `config.py` 默认值。也就是说，不提供 `.env`
+文件时后端仍可按默认值启动；本地开发可从 `backend/.env.example` 复制生成 `backend/.env` 后按需修改；
+Docker 部署可直接通过容器环境变量覆盖配置。
+
+生产环境必须覆盖 `JWT_SECRET_KEY`、`BOOTSTRAP_ADMIN_PASSWORD` 等安全相关默认值。`backend/.env`
+属于本地私有配置，不应提交到仓库；仓库只提交 `backend/.env.example` 作为配置模板。
 
 ### Docker 部署架构
 

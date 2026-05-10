@@ -9,7 +9,7 @@
     </div>
 
     <el-card shadow="never">
-      <el-table :data="regions" stripe v-loading="loading" empty-text="暂无 Region">
+      <el-table :data="regions" stripe border v-loading="loading" empty-text="暂无 Region">
         <el-table-column prop="name" label="Region 名称" min-width="160">
           <template #default="{ row }">
             <span class="link-text" @click="viewRegion(row)">{{ row.name }}</span>

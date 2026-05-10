@@ -30,13 +30,16 @@ def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
         .group_by(NetworkPlaneType.is_private)
         .all()
     )
-    plane_by_scope = {"私网" if is_private else "非私网": count for is_private, count in scope_counts}
+    scope_order = {"非私网": 0, "私网": 1}
+    scope_items = [("私网" if is_private else "非私网", count) for is_private, count in scope_counts]
+    plane_by_scope = dict(sorted(scope_items, key=lambda item: scope_order[item[0]]))
 
     # Region network plane by region
     region_counts = (
         db.query(Region.name, func.count(RegionNetworkPlane.id))
         .join(RegionNetworkPlane, Region.id == RegionNetworkPlane.region_id, isouter=True)
         .group_by(Region.id, Region.name)
+        .order_by(Region.name.asc())
         .all()
     )
     plane_by_region = [{"region_name": name, "count": c} for name, c in region_counts]

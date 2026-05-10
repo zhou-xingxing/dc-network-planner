@@ -19,17 +19,14 @@ def test_create_duplicate_region(client, admin_headers):
 
 
 def test_list_regions(client, admin_headers):
-    client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
-    client.post(
-        "/api/regions",
-        json={"name": "上海数据中心", "description": ""},
-        headers=admin_headers,
-    )
+    client.post("/api/regions", json={"name": "Region-B", "description": ""}, headers=admin_headers)
+    client.post("/api/regions", json={"name": "Region-A", "description": ""}, headers=admin_headers)
     resp = client.get("/api/regions?skip=0&limit=10", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 2
     assert len(data["items"]) == 2
+    assert [item["name"] for item in data["items"]] == ["Region-A", "Region-B"]
 
 
 def test_list_regions_search(client, admin_headers):

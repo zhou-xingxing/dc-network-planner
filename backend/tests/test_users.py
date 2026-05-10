@@ -36,8 +36,8 @@ def test_create_user_converts_username_integrity_error_to_conflict(client, admin
 
 
 def test_user_management_crud_with_region_permissions(client, admin_headers):
-    region_a = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
     region_b = client.post("/api/regions", json={"name": "Region-B"}, headers=admin_headers).json()
+    region_a = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
 
     create_response = client.post(
         "/api/users",
@@ -47,20 +47,23 @@ def test_user_management_crud_with_region_permissions(client, admin_headers):
             "password": "initial-password",
             "role": "user",
             "display_name": "Alice",
-            "permitted_region_ids": [region_a["id"]],
+            "permitted_region_ids": [region_b["id"], region_a["id"]],
         },
     )
     assert create_response.status_code == 201
     created = create_response.json()
     assert created["username"] == "alice"
     assert created["display_name"] == "Alice"
-    assert created["permitted_regions"] == [{"id": region_a["id"], "name": "Region-A"}]
+    assert created["permitted_regions"] == [
+        {"id": region_a["id"], "name": "Region-A"},
+        {"id": region_b["id"], "name": "Region-B"},
+    ]
 
     list_response = client.get("/api/users", headers=admin_headers)
     assert list_response.status_code == 200
     users = list_response.json()
     assert users["total"] == 2
-    assert {item["username"] for item in users["items"]} == {"admin", "alice"}
+    assert [item["username"] for item in users["items"]] == ["admin", "alice"]
 
     update_response = client.put(
         f"/api/users/{created['id']}",

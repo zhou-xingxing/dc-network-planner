@@ -35,7 +35,17 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
         树形结构列表，每个节点包含 id、plane_type_id、cidr、
         parent_id、children 等字段。
     """
-    all_planes = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.region_id == region_id).all()
+    all_planes = (
+        db.query(RegionNetworkPlane)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+        .filter(RegionNetworkPlane.region_id == region_id)
+        .order_by(
+            NetworkPlaneType.name.asc(),
+            RegionNetworkPlane.scope.asc(),
+            RegionNetworkPlane.cidr.asc(),
+        )
+        .all()
+    )
 
     # 构建内存字典，方便 O(1) 查找和拼装树
     plane_dict: dict[str, dict[str, Any]] = {}

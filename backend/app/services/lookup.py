@@ -5,6 +5,8 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.exceptions import BusinessError
+from app.models.network_plane_type import NetworkPlaneType
+from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
 from app.utils.ip_utils import check_overlap, ip_belongs_to_network, parse_cidr, parse_ip
 
@@ -24,7 +26,19 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[Region
     Raises:
         BusinessError: q 不是合法的 IP 或 CIDR 格式。
     """
-    planes = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.cidr.isnot(None)).all()
+    planes = (
+        db.query(RegionNetworkPlane)
+        .join(Region, RegionNetworkPlane.region_id == Region.id)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+        .filter(RegionNetworkPlane.cidr.isnot(None))
+        .order_by(
+            Region.name.asc(),
+            NetworkPlaneType.name.asc(),
+            RegionNetworkPlane.scope.asc(),
+            RegionNetworkPlane.cidr.asc(),
+        )
+        .all()
+    )
     results: list[RegionNetworkPlane] = []
 
     ip = parse_ip(q)

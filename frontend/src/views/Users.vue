@@ -9,7 +9,7 @@
     </div>
 
     <el-card>
-      <el-table :data="users" v-loading="loading" style="width: 100%">
+      <el-table :data="users" border v-loading="loading" style="width: 100%">
         <el-table-column prop="username" label="用户名" min-width="130" />
         <el-table-column prop="display_name" label="显示名" min-width="130" />
         <el-table-column prop="role" label="角色" width="150">

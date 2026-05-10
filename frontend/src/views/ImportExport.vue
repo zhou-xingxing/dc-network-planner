@@ -70,7 +70,7 @@
             />
             <div v-if="previewData.error_rows.length > 0" style="margin-bottom: 16px">
               <h4 class="sub-title">错误详情：</h4>
-              <el-table :data="previewData.error_rows" stripe size="small">
+              <el-table :data="previewData.error_rows" stripe border size="small">
                 <el-table-column prop="row" label="行号" width="80" />
                 <el-table-column prop="errors" label="错误" min-width="300">
                   <template #default="{ row }">
@@ -81,7 +81,7 @@
             </div>
             <h4 class="sub-title">数据预览（仅显示有效行）：</h4>
             <div style="max-height: 400px; overflow-y: auto; margin-bottom: 16px">
-              <el-table :data="previewData.rows" stripe size="small">
+              <el-table :data="previewData.rows" stripe border size="small">
                 <el-table-column prop="row_number" label="行" width="50" />
                 <el-table-column prop="region_name" label="Region" width="120" />
                 <el-table-column prop="plane_type_name" label="网络平面" width="120" />

@@ -100,6 +100,21 @@ def test_create_root_plane_normalizes_blank_scope_to_global(client, admin_header
     assert duplicate_resp.status_code == 409
 
 
+def test_get_plane_tree_orders_root_planes_by_type_name(client, admin_headers, user_headers_factory):
+    """Region 平面树根节点默认按网络平面类型名称升序展示。"""
+    region = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
+    pt_z = _create_plane_type(client, admin_headers, "Z平面").json()
+    pt_a = _create_plane_type(client, admin_headers, "A平面").json()
+    user_headers = user_headers_factory([region["id"]])
+    _enable_plane(client, region["id"], pt_z["id"], "10.0.1.0/24", user_headers)
+    _enable_plane(client, region["id"], pt_a["id"], "10.0.2.0/24", user_headers)
+
+    response = client.get(f"/api/regions/{region['id']}/planes", headers=admin_headers)
+
+    assert response.status_code == 200
+    assert [node["plane_type_name"] for node in response.json()] == ["A平面", "Z平面"]
+
+
 def test_create_root_plane_rejects_same_type_scope_cidr_overlap(client, admin_headers, user_headers_factory):
     """同一类型的不同作用域实例之间 CIDR 不能重叠。"""
     region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)

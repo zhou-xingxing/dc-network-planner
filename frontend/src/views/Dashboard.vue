@@ -93,7 +93,7 @@
           <el-button size="small" text type="primary" @click="$router.push('/change-logs')">查看全部</el-button>
         </div>
       </template>
-      <el-table :data="stats.recent_changes" stripe style="width: 100%" v-loading="loading" empty-text="暂无变更记录">
+      <el-table :data="stats.recent_changes" stripe border style="width: 100%" v-loading="loading" empty-text="暂无变更记录">
         <el-table-column prop="created_at" label="时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>

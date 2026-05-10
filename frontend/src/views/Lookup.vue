@@ -38,7 +38,7 @@
           <el-tag size="small" effect="plain" type="info">共 {{ total }} 条匹配</el-tag>
         </div>
       </template>
-      <el-table :data="results" stripe v-loading="searching" empty-text="未找到匹配的网络平面">
+      <el-table :data="results" stripe border v-loading="searching" empty-text="未找到匹配的网络平面">
         <el-table-column prop="cidr" label="IP地址段" width="160" />
         <el-table-column prop="region_name" label="所属 Region" width="160" />
         <el-table-column prop="plane_type_name" label="网络平面" width="120" />

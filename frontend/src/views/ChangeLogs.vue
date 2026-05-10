@@ -35,7 +35,7 @@
     </el-card>
 
     <el-card shadow="never">
-      <el-table :data="items" stripe v-loading="loading" empty-text="暂无变更记录" :max-height="600">
+      <el-table :data="items" stripe border v-loading="loading" empty-text="暂无变更记录" :max-height="600">
         <el-table-column prop="created_at" label="时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>

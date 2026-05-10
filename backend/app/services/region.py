@@ -29,7 +29,7 @@ def list_regions(
     if search:
         query = query.filter(Region.name.ilike(f"%{search}%"))
     total = query.count()
-    regions = query.order_by(Region.created_at.desc()).offset(skip).limit(limit).all()
+    regions = query.order_by(Region.name.asc()).offset(skip).limit(limit).all()
     return regions, total
 
 

@@ -10,6 +10,8 @@ from app.dependencies import (
     get_current_user,
     operator_name,
 )
+from app.models.network_plane_type import NetworkPlaneType
+from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
 from app.models.user import User
 from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
@@ -79,13 +81,22 @@ def export_excel(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """导出 Region 网络平面数据到 Excel。"""
-    query = db.query(RegionNetworkPlane)
+    query = (
+        db.query(RegionNetworkPlane)
+        .join(Region, RegionNetworkPlane.region_id == Region.id)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+    )
     if region_id:
         query = query.filter(RegionNetworkPlane.region_id == region_id)
     if plane_type_id:
         query = query.filter(RegionNetworkPlane.plane_type_id == plane_type_id)
 
-    planes = query.order_by(RegionNetworkPlane.created_at.desc()).all()
+    planes = query.order_by(
+        Region.name.asc(),
+        NetworkPlaneType.name.asc(),
+        RegionNetworkPlane.scope.asc(),
+        RegionNetworkPlane.cidr.asc(),
+    ).all()
 
     data = []
     for plane in planes:

@@ -50,6 +50,18 @@ def test_plane_type_defaults_private_to_false(client, admin_headers):
     assert data["vrf"] is None
 
 
+def test_list_plane_types_orders_by_name(client, admin_headers):
+    """网络平面类型列表默认按名称升序返回。"""
+    client.post("/api/network-plane-types", json={"name": "Z平面"}, headers=admin_headers)
+    client.post("/api/network-plane-types", json={"name": "A平面"}, headers=admin_headers)
+
+    response = client.get("/api/network-plane-types?skip=0&limit=10", headers=admin_headers)
+
+    assert response.status_code == 200
+    names = [item["name"] for item in response.json()["items"]]
+    assert names == ["A平面", "Z平面"]
+
+
 def test_create_plane_type_with_parent(client, admin_headers):
     parent = client.post("/api/network-plane-types", json={"name": "父平面"}, headers=admin_headers).json()
 

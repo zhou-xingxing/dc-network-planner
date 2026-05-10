@@ -99,10 +99,10 @@ def get_user_by_username(db: Session, username: str) -> Optional[User]:
 
 
 def list_users(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[User], int]:
-    """List users ordered by creation time."""
+    """List users ordered by username."""
     query = db.query(User)
     total = query.count()
-    users = query.order_by(User.created_at.desc()).offset(skip).limit(limit).all()
+    users = query.order_by(User.username.asc()).offset(skip).limit(limit).all()
     return users, total
 
 
@@ -194,7 +194,13 @@ def user_to_response(user: User) -> dict[str, Any]:
         "is_active": user.is_active,
         "permitted_regions": [
             {"id": permission.region.id, "name": permission.region.name}
-            for permission in user.region_permissions
+            for permission in sorted(
+                user.region_permissions,
+                key=lambda permission: (
+                    permission.region.name if permission.region else "",
+                    permission.region_id,
+                ),
+            )
             if permission.region
         ],
         "created_at": format_datetime(user.created_at),
@@ -227,6 +233,7 @@ def _replace_user_region_permissions(db: Session, user: User, permitted_region_i
     if missing:
         raise BusinessError(f"Region 不存在: {', '.join(sorted(missing))}")
     user.region_permissions.clear()
+    db.flush()
     for region_id in sorted(existing_regions):
         user.region_permissions.append(UserRegionPermission(region_id=region_id))
 

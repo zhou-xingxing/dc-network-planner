@@ -114,7 +114,7 @@
         </div>
       </template>
 
-      <el-table :data="records" stripe v-loading="recordsLoading">
+      <el-table :data="records" stripe border v-loading="recordsLoading">
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">

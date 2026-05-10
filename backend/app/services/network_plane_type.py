@@ -26,7 +26,7 @@ def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list
         (平面类型列表, 总数) 的元组。
     """
     total = db.query(NetworkPlaneType).count()
-    items = db.query(NetworkPlaneType).order_by(NetworkPlaneType.created_at.asc()).offset(skip).limit(limit).all()
+    items = db.query(NetworkPlaneType).order_by(NetworkPlaneType.name.asc()).offset(skip).limit(limit).all()
     return items, total
 
 

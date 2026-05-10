@@ -1,6 +1,6 @@
 # DC Network Planner - 项目说明
 
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/zhou-xingxing/hcs-lld-management/ci.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/zhou-xingxing/hcs-lld-management/actions/workflows/ci.yml)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/zhou-xingxing/dc-network-planner/ci.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/zhou-xingxing/dc-network-planner/actions/workflows/ci.yml)
 [![Backend Test Coverage](https://img.shields.io/badge/Backend%20Test%20Coverage-86%25-brightgreen?style=flat-square)](#测试覆盖率)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=flat-square&logo=fastapi&logoColor=white)
@@ -390,11 +390,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 61 | 4,360 |
+| 后端代码 | 61 | 4,308 |
 | 后端测试 | 12 | 1,856 |
 | 前端代码 | 29 | 3,215 |
 | 前端测试 | 0 | 0 |
-| 合计 | 102 | 9,431 |
+| 合计 | 102 | 9,379 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

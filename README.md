@@ -396,3 +396,9 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 | 前端测试 | 0 | 0 |
 | 合计 | 102 | 9,263 |
 <!-- code-lines:end -->
+
+## 许可证与商业授权
+
+本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE) 发布。该协议属于非商业源代码可见许可，并非 OSI 批准的开源许可证。个人学习、研究、测试、评估和其他非商业用途可免费使用；企业使用、生产环境部署、商业集成或作为商业产品/服务的一部分使用前，需获得项目权利人的单独书面商业授权。
+
+商业授权边界详见 [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)。

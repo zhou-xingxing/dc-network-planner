@@ -18,7 +18,7 @@ from app.services.change_log import log_change
 from app.utils.time_utils import app_timezone, to_db_datetime, to_utc, utcnow
 
 logger = logging.getLogger(__name__)
-DEFAULT_BACKUP_FILE_PREFIX = "hcs_lld_data_backup_"
+DEFAULT_BACKUP_FILE_PREFIX = "dc_network_planner_data_backup_"
 CRON_RANGES = (
     (0, 59, "分钟"),
     (0, 23, "小时"),
@@ -67,7 +67,9 @@ def calculate_next_run(base_time: datetime, cron_expression: str) -> datetime:
     raise BusinessError("无法在未来 5 年内计算出下一次备份时间")
 
 
-def parse_cron_expression(cron_expression: str) -> tuple[set[int], set[int], set[int], set[int], set[int]]:
+def parse_cron_expression(
+    cron_expression: str,
+) -> tuple[set[int], set[int], set[int], set[int], set[int]]:
     """解析五段式 cron 表达式。
 
     支持 `*`、数字、列表、范围和步长，例如 `0 2 * * *`、`*/15 * * * *`、`30 3 * * 1-5`。
@@ -93,7 +95,9 @@ def parse_cron_expression(cron_expression: str) -> tuple[set[int], set[int], set
     )
 
 
-def _parse_cron_field(field: str, min_value: int, max_value: int, label: str) -> set[int]:
+def _parse_cron_field(
+    field: str, min_value: int, max_value: int, label: str
+) -> set[int]:
     """解析 cron 单字段（如分钟、小时），支持列表、范围、步长。
 
     例如："1,3-5,*/15" 会解析为 {1, 3, 4, 5, 0, 15, 30, 45}。
@@ -155,13 +159,17 @@ def _parse_int(value: str, label: str) -> int:
     return int(value)
 
 
-def _validate_cron_value(value: int, min_value: int, max_value: int, label: str) -> None:
+def _validate_cron_value(
+    value: int, min_value: int, max_value: int, label: str
+) -> None:
     """校验 cron 数值是否在允许范围内。"""
     if value < min_value or value > max_value:
         raise BusinessError(f"Cron {label}字段必须在 {min_value}-{max_value} 范围内")
 
 
-def _cron_matches(candidate: datetime, cron: tuple[set[int], set[int], set[int], set[int], set[int]]) -> bool:
+def _cron_matches(
+    candidate: datetime, cron: tuple[set[int], set[int], set[int], set[int], set[int]]
+) -> bool:
     """判断给定时间是否匹配已解析的 cron 表达式。
 
     日期和星期采用标准 cron 语义：
@@ -171,7 +179,9 @@ def _cron_matches(candidate: datetime, cron: tuple[set[int], set[int], set[int],
     """
     minute_values, hour_values, day_values, month_values, weekday_values = cron
     cron_weekday = (candidate.weekday() + 1) % 7
-    weekday_match = cron_weekday in weekday_values or (cron_weekday == 0 and 7 in weekday_values)
+    weekday_match = cron_weekday in weekday_values or (
+        cron_weekday == 0 and 7 in weekday_values
+    )
     day_match = candidate.day in day_values
     if day_values != set(range(1, 32)) and weekday_values != set(range(0, 8)):
         day_match = day_match or weekday_match
@@ -230,7 +240,9 @@ def get_backup_config(db: Session) -> BackupConfig:
     return config
 
 
-def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -> BackupConfig:
+def update_backup_config(
+    db: Session, data: BackupConfigUpdate, operator: str
+) -> BackupConfig:
     """更新全局备份配置。
 
     Args:
@@ -251,12 +263,18 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     config.local_path = data.local_path
     config.endpoint_url = data.endpoint_url
     config.access_key = data.access_key
-    config.secret_key = data.secret_key or (config.secret_key if data.method == "object_storage" else None)
+    config.secret_key = data.secret_key or (
+        config.secret_key if data.method == "object_storage" else None
+    )
     config.bucket = data.bucket
     config.object_prefix = data.object_prefix
     _validate_config(config)
     _validate_backup_target(config)
-    config.next_run_at = to_db_datetime(_next_run_from_config(config, utcnow())) if data.enabled else None
+    config.next_run_at = (
+        to_db_datetime(_next_run_from_config(config, utcnow()))
+        if data.enabled
+        else None
+    )
     db.flush()
 
     log_change(
@@ -271,7 +289,9 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     return config
 
 
-def list_backup_records(db: Session, skip: int = 0, limit: int = 20) -> tuple[list[BackupRecord], int]:
+def list_backup_records(
+    db: Session, skip: int = 0, limit: int = 20
+) -> tuple[list[BackupRecord], int]:
     """查询备份执行历史。
 
     Args:
@@ -284,11 +304,15 @@ def list_backup_records(db: Session, skip: int = 0, limit: int = 20) -> tuple[li
     """
     query = db.query(BackupRecord)
     total = query.count()
-    records = query.order_by(BackupRecord.started_at.desc()).offset(skip).limit(limit).all()
+    records = (
+        query.order_by(BackupRecord.started_at.desc()).offset(skip).limit(limit).all()
+    )
     return records, total
 
 
-def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -> BackupRecord:
+def run_backup(
+    db: Session, operator: str = "system", scheduled: bool = False
+) -> BackupRecord:
     """执行一次数据库备份。
 
     Args:
@@ -330,7 +354,9 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
         finished_at = to_db_datetime(utcnow())
         record.finished_at = finished_at
         if config.enabled:
-            config.next_run_at = to_db_datetime(_next_run_from_config(config, finished_at))
+            config.next_run_at = to_db_datetime(
+                _next_run_from_config(config, finished_at)
+            )
         db.flush()
 
         log_change(
@@ -348,7 +374,9 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
         finished_at = to_db_datetime(utcnow())
         record.finished_at = finished_at
         if config.enabled:
-            config.next_run_at = to_db_datetime(_next_run_from_config(config, finished_at))
+            config.next_run_at = to_db_datetime(
+                _next_run_from_config(config, finished_at)
+            )
         db.flush()
         if isinstance(exc, BusinessError):
             raise
@@ -403,7 +431,7 @@ def _validate_backup_target(config: BackupConfig) -> None:
 
 def _validate_local_backup_path(config: BackupConfig) -> None:
     target_dir = Path(config.local_path or settings.BACKUP_DEFAULT_LOCAL_PATH)
-    probe_file = target_dir / f".hcs_lld_backup_probe_{uuid.uuid4().hex}.tmp"
+    probe_file = target_dir / f".dc_network_planner_backup_probe_{uuid.uuid4().hex}.tmp"
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
         probe_file.write_bytes(b"ok")
@@ -420,7 +448,7 @@ def _validate_object_storage_target(config: BackupConfig) -> None:
     client = _create_object_storage_client(config)
     bucket = _required_object_storage_value(config.bucket, "bucket")
     prefix = (config.object_prefix or "").strip("/")
-    object_key = f".hcs_lld_backup_probe_{uuid.uuid4().hex}"
+    object_key = f".dc_network_planner_backup_probe_{uuid.uuid4().hex}"
     if prefix:
         object_key = f"{prefix}/{object_key}"
     try:
@@ -430,7 +458,11 @@ def _validate_object_storage_target(config: BackupConfig) -> None:
     try:
         client.delete_object(Bucket=bucket, Key=object_key)
     except Exception:
-        logger.warning("Failed to delete object storage backup probe: %s", object_key, exc_info=True)
+        logger.warning(
+            "Failed to delete object storage backup probe: %s",
+            object_key,
+            exc_info=True,
+        )
 
 
 def _next_run_from_config(config: BackupConfig, base_time: datetime) -> datetime:
@@ -442,7 +474,7 @@ def _create_sqlite_backup(db: Session, config: BackupConfig) -> Path:
     filename = f"{config.backup_file_prefix}{timestamp}"
     target_dir = Path(config.local_path or settings.BACKUP_DEFAULT_LOCAL_PATH)
     if config.method == "object_storage":
-        target_dir = Path(tempfile.gettempdir()) / "hcs_lld_backups"
+        target_dir = Path(tempfile.gettempdir()) / "dc_network_planner_backups"
     target_dir.mkdir(parents=True, exist_ok=True)
     target_file = target_dir / filename
 
@@ -471,7 +503,9 @@ def _upload_object_storage(config: BackupConfig, backup_file: Path) -> str:
 
 
 def _build_object_storage_target(config: BackupConfig, object_key: str) -> str:
-    endpoint = _required_object_storage_value(config.endpoint_url, "endpoint_url").rstrip("/")
+    endpoint = _required_object_storage_value(
+        config.endpoint_url, "endpoint_url"
+    ).rstrip("/")
     bucket = _required_object_storage_value(config.bucket, "bucket")
     return f"{endpoint}/{bucket}/{object_key.lstrip('/')}"
 
@@ -486,9 +520,15 @@ def _create_object_storage_client(config: BackupConfig) -> ObjectStorageClient:
         ObjectStorageClient,
         boto3.client(
             "s3",
-            endpoint_url=_required_object_storage_value(config.endpoint_url, "endpoint_url"),
-            aws_access_key_id=_required_object_storage_value(config.access_key, "access_key"),
-            aws_secret_access_key=_required_object_storage_value(config.secret_key, "secret_key"),
+            endpoint_url=_required_object_storage_value(
+                config.endpoint_url, "endpoint_url"
+            ),
+            aws_access_key_id=_required_object_storage_value(
+                config.access_key, "access_key"
+            ),
+            aws_secret_access_key=_required_object_storage_value(
+                config.secret_key, "secret_key"
+            ),
         ),
     )
 

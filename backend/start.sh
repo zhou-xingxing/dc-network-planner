@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start the HCS LLD Management backend server
+# Start the DC Network Planner backend server
 cd "$(dirname "$0")"
 
 # Create virtual environment if needed

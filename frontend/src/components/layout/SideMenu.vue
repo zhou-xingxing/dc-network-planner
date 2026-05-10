@@ -10,8 +10,8 @@
         </svg>
       </div>
       <div class="logo-text">
-        <span class="logo-title">HCS LLD</span>
-        <span class="logo-sub">管理系统</span>
+        <span class="logo-title">DC Network Planner</span>
+        <span class="logo-sub">网络平面地址规划管理</span>
       </div>
     </div>
 
@@ -67,12 +67,18 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import {
-  DataAnalysis, Location, Connection, Search, Upload, Clock, Setting, User
+  Clock,
+  Connection,
+  DataAnalysis, Location,
+  Search,
+  Setting,
+  Upload,
+  User
 } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const appStore = useAppStore()

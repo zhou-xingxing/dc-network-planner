@@ -2,10 +2,10 @@
   <div class="login-page">
     <section class="login-panel">
       <div class="brand">
-        <div class="brand-mark">HCS</div>
+        <div class="brand-mark">DC</div>
         <div>
-          <h1>HCS LLD 管理系统</h1>
-          <p>Region 网络平面地址规划管理</p>
+          <h1>DC Network Planner</h1>
+          <p>数据中心网络平面地址规划管理</p>
         </div>
       </div>
 
@@ -25,11 +25,11 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { login } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
+import { ElMessage } from 'element-plus'
+import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()

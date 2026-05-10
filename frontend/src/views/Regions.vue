@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h2 class="page-title">Region 管理</h2>
-        <p class="page-desc">管理所有 HCS 云平台 Region，查看和配置各 Region 的网络平面</p>
+        <p class="page-desc">管理所有数据中心 Region，查看和配置各 Region 的网络平面</p>
       </div>
       <el-button v-if="appStore.isAdministrator" type="primary" @click="showCreateDialog" :icon="Plus">添加 Region</el-button>
     </div>
@@ -56,7 +56,7 @@
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑 Region' : '添加 Region'" width="500px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="Region 名称" prop="name">
-          <el-input v-model="form.name" placeholder="例如: HCS华北-北京" maxlength="100" />
+          <el-input v-model="form.name" placeholder="例如: 北京数据中心" maxlength="100" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选描述信息" />

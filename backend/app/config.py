@@ -7,7 +7,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 class Settings(BaseSettings):
     # --- 数据库 ---
-    DATABASE_URL: str = "sqlite:///./hcs_lld.db"  # SQLAlchemy 数据库连接地址
+    DATABASE_URL: str = "sqlite:///./dc_network_planner.db"  # SQLAlchemy 数据库连接地址
 
     # --- 导入任务 ---
     IMPORT_TTL_MINUTES: int = 30  # 导入临时数据保留时长（分钟），超时后自动清理
@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     BACKUP_SCHEDULER_INTERVAL_SECONDS: int = 60  # 备份调度器扫描周期（秒）
 
     # --- CORS ---
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]  # 允许跨域访问的前端地址列表
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]  # 允许跨域访问的前端地址列表
 
     # --- JWT 认证 ---
     JWT_SECRET_KEY: str = "change-me-in-production"  # JWT 签名密钥，生产环境必须更换

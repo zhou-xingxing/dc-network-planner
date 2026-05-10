@@ -33,7 +33,7 @@ COPY --from=builder /app/alembic.ini /app/alembic.ini
 COPY --from=builder /app/alembic /app/alembic
 
 # Default database path (can be overridden by env var)
-ENV DATABASE_URL=sqlite:////app/data/hcs_lld.db
+ENV DATABASE_URL=sqlite:////app/data/dc_network_planner.db
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

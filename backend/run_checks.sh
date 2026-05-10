@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HCS LLD 管理系统 - 代码检查脚本
+# DC Network Planner - 代码检查脚本
 # 用法: bash run_checks.sh
 #   依次执行: ruff → black --check → mypy
 #   mypy 为 non-blocking（允许类型问题但不阻断流程）
@@ -20,7 +20,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo -e "${BLUE}══════════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}   HCS LLD 管理系统 - 代码检查                        ${NC}"
+echo -e "${BLUE}   DC Network Planner - 代码检查                        ${NC}"
 echo -e "${BLUE}══════════════════════════════════════════════════════${NC}"
 echo ""
 

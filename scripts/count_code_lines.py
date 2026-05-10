@@ -270,7 +270,7 @@ def _format_number(value: int) -> str:
 def main() -> None:
     """Parse CLI arguments and print line count statistics."""
     parser = argparse.ArgumentParser(
-        description="统计 HCS LLD 项目前端、后端、测试代码行数"
+        description="统计 DC Network Planner 项目前端、后端、测试代码行数"
     )
     parser.add_argument(
         "--root",

@@ -23,7 +23,7 @@ def test_get_backup_config_returns_default(client, admin_headers):
     data = response.json()
     assert data["enabled"] is False
     assert data["cron_expression"] == "0 2 * * *"
-    assert data["backup_file_prefix"] == "hcs_lld_data_backup_"
+    assert data["backup_file_prefix"] == "dc_network_planner_data_backup_"
     assert data["method"] == "local"
     assert data["secret_key_configured"] is False
 
@@ -38,7 +38,9 @@ def test_backup_read_endpoints_allow_normal_user(client, user_headers_factory):
     assert records_response.status_code == 200
 
 
-def test_backup_write_endpoints_require_administrator(client, tmp_path, user_headers_factory):
+def test_backup_write_endpoints_require_administrator(
+    client, tmp_path, user_headers_factory
+):
     user_headers = user_headers_factory([])
 
     update_response = client.put(
@@ -64,7 +66,7 @@ def test_update_backup_config(client, tmp_path, admin_headers):
         json={
             "enabled": True,
             "cron_expression": "15 23 * * 5",
-            "backup_file_prefix": "lld_backup_",
+            "backup_file_prefix": "dc_backup_",
             "method": "local",
             "local_path": str(tmp_path),
         },
@@ -74,12 +76,14 @@ def test_update_backup_config(client, tmp_path, admin_headers):
     data = response.json()
     assert data["enabled"] is True
     assert data["cron_expression"] == "15 23 * * 5"
-    assert data["backup_file_prefix"] == "lld_backup_"
+    assert data["backup_file_prefix"] == "dc_backup_"
     assert data["local_path"] == str(tmp_path)
     assert data["next_run_at"] is not None
 
 
-def test_update_backup_config_validates_cron_expression(client, tmp_path, admin_headers):
+def test_update_backup_config_validates_cron_expression(
+    client, tmp_path, admin_headers
+):
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -95,7 +99,9 @@ def test_update_backup_config_validates_cron_expression(client, tmp_path, admin_
     assert "分钟" in response.json()["detail"]
 
 
-def test_update_backup_config_validates_backup_file_prefix(client, tmp_path, admin_headers):
+def test_update_backup_config_validates_backup_file_prefix(
+    client, tmp_path, admin_headers
+):
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -112,7 +118,9 @@ def test_update_backup_config_validates_backup_file_prefix(client, tmp_path, adm
     assert "路径分隔符" in response.json()["detail"]
 
 
-def test_update_backup_config_validates_local_path_is_writable(client, tmp_path, admin_headers):
+def test_update_backup_config_validates_local_path_is_writable(
+    client, tmp_path, admin_headers
+):
     file_path = tmp_path / "not-a-directory"
     file_path.write_text("occupied")
 
@@ -132,7 +140,9 @@ def test_update_backup_config_validates_local_path_is_writable(client, tmp_path,
     assert "本地备份路径不可写" in response.json()["detail"]
 
 
-def test_update_backup_config_validates_object_storage_target(client, monkeypatch, admin_headers):
+def test_update_backup_config_validates_object_storage_target(
+    client, monkeypatch, admin_headers
+):
     calls = []
 
     class FakeS3Client:
@@ -159,8 +169,8 @@ def test_update_backup_config_validates_object_storage_target(client, monkeypatc
             "endpoint_url": "https://obs.example.com",
             "access_key": "ak",
             "secret_key": "sk",
-            "bucket": "hcs-lld-backup",
-            "object_prefix": "hcs-lld",
+            "bucket": "dc-network-planner-backup",
+            "object_prefix": "dc-network-planner",
         },
     )
 
@@ -174,12 +184,16 @@ def test_update_backup_config_validates_object_storage_target(client, monkeypatc
         },
     )
     assert calls[1][0] == "put"
-    assert calls[1][1]["Bucket"] == "hcs-lld-backup"
-    assert calls[1][1]["Key"].startswith("hcs-lld/.hcs_lld_backup_probe_")
+    assert calls[1][1]["Bucket"] == "dc-network-planner-backup"
+    assert calls[1][1]["Key"].startswith(
+        "dc-network-planner/.dc_network_planner_backup_probe_"
+    )
     assert calls[2][0] == "delete"
 
 
-def test_update_backup_config_reuses_existing_object_storage_secret(client, monkeypatch, admin_headers):
+def test_update_backup_config_reuses_existing_object_storage_secret(
+    client, monkeypatch, admin_headers
+):
     client_calls = []
 
     class FakeS3Client:
@@ -206,7 +220,7 @@ def test_update_backup_config_reuses_existing_object_storage_secret(client, monk
             "endpoint_url": "https://obs.example.com",
             "access_key": "ak",
             "secret_key": "first-secret",
-            "bucket": "hcs-lld-backup",
+            "bucket": "dc-network-planner-backup",
         },
     )
     second_response = client.put(
@@ -219,7 +233,7 @@ def test_update_backup_config_reuses_existing_object_storage_secret(client, monk
             "method": "object_storage",
             "endpoint_url": "https://obs.example.com",
             "access_key": "ak",
-            "bucket": "hcs-lld-backup",
+            "bucket": "dc-network-planner-backup",
         },
     )
 
@@ -229,12 +243,18 @@ def test_update_backup_config_reuses_existing_object_storage_secret(client, monk
     assert client_calls[-1]["aws_secret_access_key"] == "first-secret"
 
 
-def test_update_backup_config_rejects_invalid_object_storage_target(client, monkeypatch, admin_headers):
+def test_update_backup_config_rejects_invalid_object_storage_target(
+    client, monkeypatch, admin_headers
+):
     class FakeS3Client:
         def put_object(self, **kwargs):
             raise RuntimeError("access denied")
 
-    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda *args, **kwargs: FakeS3Client()))
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        SimpleNamespace(client=lambda *args, **kwargs: FakeS3Client()),
+    )
 
     response = client.put(
         "/api/backup/config",
@@ -247,7 +267,7 @@ def test_update_backup_config_rejects_invalid_object_storage_target(client, monk
             "endpoint_url": "https://obs.example.com",
             "access_key": "ak",
             "secret_key": "sk",
-            "bucket": "hcs-lld-backup",
+            "bucket": "dc-network-planner-backup",
         },
     )
 
@@ -277,7 +297,7 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
         json={
             "enabled": False,
             "cron_expression": "30 2 * * *",
-            "backup_file_prefix": "lld_",
+            "backup_file_prefix": "dc_",
             "method": "local",
             "local_path": str(tmp_path),
         },
@@ -294,10 +314,12 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
     target = Path(data["target"])
     assert target.exists()
     assert target.parent == tmp_path
-    assert re.fullmatch(r"lld_\d{14}", target.name)
+    assert re.fullmatch(r"dc_\d{14}", target.name)
 
 
-def test_run_backup_records_object_storage_full_target(client, monkeypatch, admin_headers):
+def test_run_backup_records_object_storage_full_target(
+    client, monkeypatch, admin_headers
+):
     calls = []
 
     class FakeS3Client:
@@ -310,20 +332,24 @@ def test_run_backup_records_object_storage_full_target(client, monkeypatch, admi
         def upload_file(self, filename, bucket, key):
             calls.append(("upload", filename, bucket, key))
 
-    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda *args, **kwargs: FakeS3Client()))
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        SimpleNamespace(client=lambda *args, **kwargs: FakeS3Client()),
+    )
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
         json={
             "enabled": False,
             "cron_expression": "30 2 * * *",
-            "backup_file_prefix": "lld_",
+            "backup_file_prefix": "dc_",
             "method": "object_storage",
             "endpoint_url": "https://obs.example.com/",
             "access_key": "ak",
             "secret_key": "sk",
-            "bucket": "hcs-lld-backup",
-            "object_prefix": "hcs-lld",
+            "bucket": "dc-network-planner-backup",
+            "object_prefix": "dc-network-planner",
         },
     )
     assert config_response.status_code == 200
@@ -333,20 +359,25 @@ def test_run_backup_records_object_storage_full_target(client, monkeypatch, admi
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "success"
-    assert re.fullmatch(r"https://obs\.example\.com/hcs-lld-backup/hcs-lld/lld_\d{14}", data["target"])
+    assert re.fullmatch(
+        r"https://obs\.example\.com/dc-network-planner-backup/dc-network-planner/dc_\d{14}",
+        data["target"],
+    )
     upload_call = [call for call in calls if call[0] == "upload"][0]
-    assert upload_call[2] == "hcs-lld-backup"
-    assert re.fullmatch(r"hcs-lld/lld_\d{14}", upload_call[3])
+    assert upload_call[2] == "dc-network-planner-backup"
+    assert re.fullmatch(r"dc-network-planner/dc_\d{14}", upload_call[3])
 
 
-def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp_path, monkeypatch, admin_headers):
+def test_run_backup_records_failed_status_when_backup_creation_fails(
+    client, tmp_path, monkeypatch, admin_headers
+):
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
         json={
             "enabled": False,
             "cron_expression": "30 2 * * *",
-            "backup_file_prefix": "lld_",
+            "backup_file_prefix": "dc_",
             "method": "local",
             "local_path": str(tmp_path),
         },
@@ -356,7 +387,9 @@ def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp
     def fail_create_sqlite_backup(*args, **kwargs):
         raise RuntimeError("disk full")
 
-    monkeypatch.setattr(backup_service, "_create_sqlite_backup", fail_create_sqlite_backup)
+    monkeypatch.setattr(
+        backup_service, "_create_sqlite_backup", fail_create_sqlite_backup
+    )
 
     response = client.post("/api/backup/run", headers=admin_headers)
 
@@ -369,7 +402,9 @@ def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp
     assert data["file_size"] is None
 
 
-def test_run_backup_records_failed_upload_and_refreshes_next_run(client, monkeypatch, admin_headers, test_db):
+def test_run_backup_records_failed_upload_and_refreshes_next_run(
+    client, monkeypatch, admin_headers, test_db
+):
     calls = []
 
     class FakeS3Client:
@@ -383,20 +418,24 @@ def test_run_backup_records_failed_upload_and_refreshes_next_run(client, monkeyp
             calls.append(("upload", filename, bucket, key))
             raise RuntimeError("upload failed")
 
-    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda *args, **kwargs: FakeS3Client()))
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        SimpleNamespace(client=lambda *args, **kwargs: FakeS3Client()),
+    )
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
         json={
             "enabled": False,
             "cron_expression": "*/5 * * * *",
-            "backup_file_prefix": "lld_",
+            "backup_file_prefix": "dc_",
             "method": "object_storage",
             "endpoint_url": "https://obs.example.com",
             "access_key": "ak",
             "secret_key": "sk",
-            "bucket": "hcs-lld-backup",
-            "object_prefix": "hcs-lld",
+            "bucket": "dc-network-planner-backup",
+            "object_prefix": "dc-network-planner",
         },
     )
     assert config_response.status_code == 200
@@ -428,14 +467,16 @@ def test_run_backup_records_failed_upload_and_refreshes_next_run(client, monkeyp
         session.close()
 
 
-def test_run_backup_returns_409_for_business_error(client, tmp_path, monkeypatch, admin_headers):
+def test_run_backup_returns_409_for_business_error(
+    client, tmp_path, monkeypatch, admin_headers
+):
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
         json={
             "enabled": False,
             "cron_expression": "30 2 * * *",
-            "backup_file_prefix": "lld_",
+            "backup_file_prefix": "dc_",
             "method": "local",
             "local_path": str(tmp_path),
         },
@@ -445,7 +486,9 @@ def test_run_backup_returns_409_for_business_error(client, tmp_path, monkeypatch
     def fail_with_business_error(*args, **kwargs):
         raise BusinessError("当前备份功能仅支持 SQLite 数据库")
 
-    monkeypatch.setattr(backup_service, "_create_sqlite_backup", fail_with_business_error)
+    monkeypatch.setattr(
+        backup_service, "_create_sqlite_backup", fail_with_business_error
+    )
 
     response = client.post("/api/backup/run", headers=admin_headers)
 
@@ -453,18 +496,20 @@ def test_run_backup_returns_409_for_business_error(client, tmp_path, monkeypatch
     assert "SQLite" in response.json()["detail"]
 
 
-def test_run_backup_rejects_incomplete_object_storage_config(client, admin_headers, test_db):
+def test_run_backup_rejects_incomplete_object_storage_config(
+    client, admin_headers, test_db
+):
     session = Session(test_db)
     try:
         config = session.query(BackupConfig).first()
         config.enabled = False
         config.cron_expression = "30 2 * * *"
-        config.backup_file_prefix = "lld_"
+        config.backup_file_prefix = "dc_"
         config.method = "object_storage"
         config.endpoint_url = "https://obs.example.com"
         config.access_key = "ak"
         config.secret_key = None
-        config.bucket = "hcs-lld-backup"
+        config.bucket = "dc-network-planner-backup"
         session.commit()
     finally:
         session.close()
@@ -583,29 +628,43 @@ def test_calculate_next_run_daily_uses_configured_time():
     before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
     after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(before_time, "30 2 * * *") == datetime(2026, 4, 25, 18, 30, tzinfo=timezone.utc)
-    assert calculate_next_run(after_time, "30 2 * * *") == datetime(2026, 4, 26, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(before_time, "30 2 * * *") == datetime(
+        2026, 4, 25, 18, 30, tzinfo=timezone.utc
+    )
+    assert calculate_next_run(after_time, "30 2 * * *") == datetime(
+        2026, 4, 26, 18, 30, tzinfo=timezone.utc
+    )
 
 
 def test_calculate_next_run_weekly_uses_weekday_and_time():
     sunday_before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
     sunday_after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(sunday_before_time, "30 2 * * 0") == datetime(2026, 4, 25, 18, 30, tzinfo=timezone.utc)
-    assert calculate_next_run(sunday_after_time, "30 2 * * 7") == datetime(2026, 5, 2, 18, 30, tzinfo=timezone.utc)
-    assert calculate_next_run(sunday_after_time, "30 2 * * 1") == datetime(2026, 4, 26, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(sunday_before_time, "30 2 * * 0") == datetime(
+        2026, 4, 25, 18, 30, tzinfo=timezone.utc
+    )
+    assert calculate_next_run(sunday_after_time, "30 2 * * 7") == datetime(
+        2026, 5, 2, 18, 30, tzinfo=timezone.utc
+    )
+    assert calculate_next_run(sunday_after_time, "30 2 * * 1") == datetime(
+        2026, 4, 26, 18, 30, tzinfo=timezone.utc
+    )
 
 
 def test_calculate_next_run_supports_steps_ranges_and_lists():
     base_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(2026, 4, 25, 18, 15, tzinfo=timezone.utc)
+    assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(
+        2026, 4, 25, 18, 15, tzinfo=timezone.utc
+    )
 
 
 def test_calculate_next_run_uses_cron_day_or_weekday_semantics():
     base_time = datetime(2026, 4, 30, 18, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(base_time, "30 2 2 * 1") == datetime(2026, 5, 1, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(base_time, "30 2 2 * 1") == datetime(
+        2026, 5, 1, 18, 30, tzinfo=timezone.utc
+    )
 
 
 def test_parse_cron_expression_rejects_invalid_formats():

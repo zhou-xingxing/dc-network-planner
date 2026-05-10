@@ -1,10 +1,10 @@
-# HCS LLD 管理系统 - 架构设计文档
+# DC Network Planner - 架构设计文档
 
 ## 1. 核心需求
 
 | 需求 | 说明 |
 |---|---|
-| Region 管理 | 查询、创建、更新、删除云平台 Region |
+| Region 管理 | 查询、创建、更新、删除数据中心 Region |
 | 网络平面自定义 | 可自定义网络平面类型（如管理平面、业务平面、存储平面等），每个 Region 可独立启用/禁用 |
 | 网络平面地址管理 | 管理每个 Region 下各网络平面的 CIDR、VLAN ID、网关位置和网关 IP |
 | IP 查重 | 给定 IP 地址或 CIDR 地址段，快速检查是否已被分配，返回所属 Region 和网络平面 |
@@ -55,7 +55,7 @@ graph TB
         Routers --> Services --> Models
     end
 
-    DB[("SQLite<br/>hcs_lld.db")]
+    DB[("SQLite<br/>dc_network_planner.db")]
 
     FE_Axios --> Routers
     Models <--> DB
@@ -224,7 +224,7 @@ erDiagram
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
-| name | String(100) | NOT NULL, UNIQUE, INDEX | 如 "HCS华北-北京" |
+| name | String(100) | NOT NULL, UNIQUE, INDEX | 如 "北京数据中心" |
 | description | Text | NULLABLE | 自由文本 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
@@ -287,7 +287,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | id | String(36) UUID | PK | UUID v4 |
 | enabled | Boolean | NOT NULL, default=false | 是否启用定时备份任务 |
 | cron_expression | String(100) | NOT NULL, default='0 2 * * *' | 五段式 cron 表达式：分 时 日 月 周，秒固定为 0 |
-| backup_file_prefix | String(200) | NOT NULL, default='hcs_lld_data_backup_' | 备份文件名前缀，实际文件名为 `{backup_file_prefix}{YYYYMMDDHHMMSS}` |
+| backup_file_prefix | String(200) | NOT NULL, default='dc_network_planner_data_backup_' | 备份文件名前缀，实际文件名为 `{backup_file_prefix}{YYYYMMDDHHMMSS}` |
 | method | String(30) | NOT NULL, default='local' | local/object_storage |
 | local_path | String(500) | NULLABLE | 本地备份目录 |
 | endpoint_url | String(500) | NULLABLE | S3 兼容对象存储 Endpoint |
@@ -542,7 +542,7 @@ GET /api/backup/records
 4. 备份完成后按 `cron_expression` 重新计算下一次执行时间
 5. 手动备份复用同一个 `run_backup()`，但不依赖 `enabled`
 
-**备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的备份文件。文件命名格式为 `{backup_file_prefix}{YYYYMMDDHHMMSS}`，默认如 `hcs_lld_data_backup_20260428143005`。
+**备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的备份文件。文件命名格式为 `{backup_file_prefix}{YYYYMMDDHHMMSS}`，默认如 `dc_network_planner_data_backup_20260428143005`。
 
 **保存配置校验决策**：保存备份配置时执行轻量目标探测，不触发真实数据库备份。
 
@@ -663,7 +663,7 @@ graph TB
 
         subgraph BE["backend (uvicorn)"]
             App["FastAPI App"]
-            DB[("SQLite (/data)<br/>hcs_lld.db")]
+            DB[("SQLite (/data)<br/>dc_network_planner.db")]
             App --> DB
         end
 
@@ -692,12 +692,12 @@ services:
     build: ./backend
     ports: ["8000:8000"]
     environment:
-      - DATABASE_URL=sqlite:////app/data/hcs_lld.db
+      - DATABASE_URL=sqlite:////app/data/dc_network_planner.db
       - JWT_SECRET_KEY=please-change-me
       - BOOTSTRAP_ADMIN_USERNAME=admin
       - BOOTSTRAP_ADMIN_PASSWORD=please-change-me
     volumes:
-      - hcs-lld-data:/app/data    # 数据库持久化
+      - dc-network-planner-data:/app/data    # 数据库持久化
     healthcheck:
       test: curl http://localhost:8000/api/health
 
@@ -718,18 +718,18 @@ services:
 
 ```bash
 # 后端
-docker build -t hcs-lld-backend -f backend/Dockerfile backend/
-docker run -d --name hcs-lld-backend -p 8000:8000 \
+docker build -t dc-network-planner-backend -f backend/Dockerfile backend/
+docker run -d --name dc-network-planner-backend -p 8000:8000 \
   -e JWT_SECRET_KEY=please-change-me \
   -e BOOTSTRAP_ADMIN_PASSWORD=please-change-me \
-  -v hcs-lld-data:/app/data hcs-lld-backend
+  -v dc-network-planner-data:/app/data dc-network-planner-backend
 
 # 前端
-docker build -t hcs-lld-frontend \
+docker build -t dc-network-planner-frontend \
   --build-arg VITE_API_BASE_URL=/api \
   -f frontend/Dockerfile frontend/
-docker run -d --name hcs-lld-frontend -p 80:80 \
-  -e BACKEND_URL=http://你的后端IP:8000 hcs-lld-frontend
+docker run -d --name dc-network-planner-frontend -p 80:80 \
+  -e BACKEND_URL=http://你的后端IP:8000 dc-network-planner-frontend
 ```
 
 ### Docker 设计要点
@@ -790,9 +790,9 @@ graph TB
 
 | 标签 | 生成条件 | 示例 |
 |---|---|---|
-| `latest` | 推送 main 分支时 | `ghcr.io/owner/hcs-lld-backend:latest` |
-| `sha-{short}` | 推送 main 分支时 | `ghcr.io/owner/hcs-lld-backend:sha-a1b2c3d` |
-| `{version}` | 推送 v* 标签时 | `ghcr.io/owner/hcs-lld-backend:1.0.0` |
+| `latest` | 推送 main 分支时 | `ghcr.io/owner/dc-network-planner-backend:latest` |
+| `sha-{short}` | 推送 main 分支时 | `ghcr.io/owner/dc-network-planner-backend:sha-a1b2c3d` |
+| `{version}` | 推送 v* 标签时 | `ghcr.io/owner/dc-network-planner-backend:1.0.0` |
 
 ### 9.5 测试策略
 

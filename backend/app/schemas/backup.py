@@ -10,7 +10,9 @@ BackupMethod = Literal["local", "object_storage"]
 class BackupConfigUpdate(BaseModel):
     enabled: bool
     cron_expression: str = Field("0 2 * * *", min_length=1, max_length=100)
-    backup_file_prefix: str = Field("hcs_lld_data_backup_", min_length=1, max_length=200)
+    backup_file_prefix: str = Field(
+        "dc_network_planner_data_backup_", min_length=1, max_length=200
+    )
     method: BackupMethod = "local"
     local_path: Optional[str] = Field(None, max_length=500)
     endpoint_url: Optional[str] = Field(None, max_length=500)

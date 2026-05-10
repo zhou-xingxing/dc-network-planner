@@ -1,6 +1,6 @@
 """Region CRUD tests."""
 
-REGION_DATA = {"name": "HCS华北-北京", "description": "Production region"}
+REGION_DATA = {"name": "北京数据中心", "description": "Production region"}
 
 
 def test_create_region(client, admin_headers):
@@ -22,7 +22,7 @@ def test_list_regions(client, admin_headers):
     client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     client.post(
         "/api/regions",
-        json={"name": "HCS华东-上海", "description": ""},
+        json={"name": "上海数据中心", "description": ""},
         headers=admin_headers,
     )
     resp = client.get("/api/regions?skip=0&limit=10", headers=admin_headers)
@@ -36,14 +36,14 @@ def test_list_regions_search(client, admin_headers):
     client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     client.post(
         "/api/regions",
-        json={"name": "HCS华东-上海", "description": ""},
+        json={"name": "上海数据中心", "description": ""},
         headers=admin_headers,
     )
     resp = client.get("/api/regions?search=北京", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["items"][0]["name"] == "HCS华北-北京"
+    assert data["items"][0]["name"] == "北京数据中心"
 
 
 def test_update_region(client, admin_headers):
@@ -52,11 +52,11 @@ def test_update_region(client, admin_headers):
 
     resp = client.put(
         f"/api/regions/{region_id}",
-        json={"name": "HCS华北-北京-UPDATED"},
+        json={"name": "北京数据中心-UPDATED"},
         headers=admin_headers,
     )
     assert resp.status_code == 200
-    assert resp.json()["name"] == "HCS华北-北京-UPDATED"
+    assert resp.json()["name"] == "北京数据中心-UPDATED"
 
 
 def test_delete_region(client, admin_headers):

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start the HCS LLD Management frontend dev server
+# Start the DC Network Planner frontend dev server
 cd "$(dirname "$0")"
 
 # Install dependencies if needed

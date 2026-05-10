@@ -6,7 +6,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.routers import auth, backup, change_logs, excel, lookup, network_plane_types, regions, stats, users
+from app.routers import (
+    auth,
+    backup,
+    change_logs,
+    excel,
+    lookup,
+    network_plane_types,
+    regions,
+    stats,
+    users,
+)
 from app.services.auth import ensure_bootstrap_admin
 from app.services.backup import ensure_backup_config
 from app.services.backup_scheduler import backup_scheduler
@@ -34,8 +44,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(
-    title="HCS LLD Management System",
-    description="华为云Stack LLD 管理系统 - 网络平面IP地址规划管理",
+    title="DC Network Planner",
+    description="数据中心网络平面规划系统的后端 API 服务",
     version="0.1.0",
     lifespan=lifespan,
 )

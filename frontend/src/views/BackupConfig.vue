@@ -36,7 +36,7 @@
         <el-form-item label="文件名前缀" prop="backup_file_prefix">
           <el-input
             v-model="form.backup_file_prefix"
-            placeholder="hcs_lld_data_backup_"
+            placeholder="dc_network_planner_data_backup_"
             clearable
             class="prefix-input"
           />
@@ -63,10 +63,10 @@
             />
           </el-form-item>
           <el-form-item label="Bucket" prop="bucket">
-            <el-input v-model="form.bucket" placeholder="hcs-lld-backup" clearable />
+            <el-input v-model="form.bucket" placeholder="dc-network-planner-backup" clearable />
           </el-form-item>
           <el-form-item label="对象前缀">
-            <el-input v-model="form.object_prefix" placeholder="hcs-lld" clearable />
+            <el-input v-model="form.object_prefix" placeholder="dc-network-planner" clearable />
           </el-form-item>
         </template>
       </el-card>
@@ -173,7 +173,7 @@ const pageSize = ref(10)
 const form = reactive({
   enabled: false,
   cron_expression: '0 2 * * *',
-  backup_file_prefix: 'hcs_lld_data_backup_',
+  backup_file_prefix: 'dc_network_planner_data_backup_',
   method: 'local',
   local_path: './backups',
   endpoint_url: '',
@@ -215,7 +215,7 @@ function applyConfig(data) {
   secretConfigured.value = data.secret_key_configured
   form.enabled = data.enabled
   form.cron_expression = data.cron_expression || '0 2 * * *'
-  form.backup_file_prefix = data.backup_file_prefix || 'hcs_lld_data_backup_'
+  form.backup_file_prefix = data.backup_file_prefix || 'dc_network_planner_data_backup_'
   form.method = data.method
   form.local_path = data.local_path || './backups'
   form.endpoint_url = data.endpoint_url || ''

@@ -2,6 +2,6 @@ __pycache__
 *.pyc
 venv/
 .env
-hcs_lld.db
+dc_network_planner.db
 .DS_Store
 *.egg-info

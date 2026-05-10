@@ -175,7 +175,7 @@ async function downloadTemplate() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'hcs_lld_import_template.xlsx'
+    a.download = 'dc_network_planner_import_template.xlsx'
     a.click()
     URL.revokeObjectURL(url)
   } finally {
@@ -228,7 +228,7 @@ async function handleExport() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'hcs_lld_export.xlsx'
+    a.download = 'dc_network_planner_export.xlsx'
     a.click()
     URL.revokeObjectURL(url)
     ElMessage.success('导出成功')

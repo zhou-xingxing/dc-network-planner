@@ -5,14 +5,20 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import ensure_region_business_write_allowed, get_current_user, operator_name
+from app.dependencies import (
+    ensure_region_business_write_allowed,
+    get_current_user,
+    operator_name,
+)
 from app.models.region_network_plane import RegionNetworkPlane
 from app.models.user import User
 from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
 from app.services import excel as excel_service
 from app.utils.excel_utils import build_export, generate_template
 
-router = APIRouter(prefix="/api/excel", tags=["Excel"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/excel", tags=["Excel"], dependencies=[Depends(get_current_user)]
+)
 
 
 @router.get("/template")
@@ -22,7 +28,9 @@ def download_template() -> StreamingResponse:
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=hcs_lld_import_template.xlsx"},
+        headers={
+            "Content-Disposition": "attachment; filename=dc_network_planner_import_template.xlsx"
+        },
     )
 
 
@@ -59,7 +67,9 @@ def confirm_import(
     else:
         for region_id in region_ids:
             ensure_region_business_write_allowed(current_user, region_id)
-        result = excel_service.confirm_import(data.preview_id, operator_name(current_user), db)
+        result = excel_service.confirm_import(
+            data.preview_id, operator_name(current_user), db
+        )
     return ImportResultResponse(
         success=result["success"],
         imported_count=result["imported_count"],
@@ -101,5 +111,7 @@ def export_excel(
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=hcs_lld_export.xlsx"},
+        headers={
+            "Content-Disposition": "attachment; filename=dc_network_planner_export.xlsx"
+        },
     )

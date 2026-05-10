@@ -4,7 +4,7 @@
 
 ## 项目定位
 
-HCS LLD 管理系统是用于管理云平台 Region 网络平面地址规划的 Web 应用，替代 Excel 手工维护。界面语言为中文（zh-CN）。
+DC Network Planner 是用于管理数据中心 Region 网络平面地址规划的 Web 应用，替代 Excel 手工维护。界面语言为中文（zh-CN）。
 
 - 后端：Python 3.12 + FastAPI + SQLAlchemy + SQLite
 - 前端：Vue 3 + Vite + Element Plus

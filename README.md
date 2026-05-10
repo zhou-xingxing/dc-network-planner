@@ -1,4 +1,4 @@
-# HCS LLD 管理系统 - 项目说明
+# DC Network Planner - 项目说明
 
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/zhou-xingxing/hcs-lld-management/ci.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/zhou-xingxing/hcs-lld-management/actions/workflows/ci.yml)
 [![Backend Test Coverage](https://img.shields.io/badge/Backend%20Test%20Coverage-86%25-brightgreen?style=flat-square)](#测试覆盖率)
@@ -11,19 +11,19 @@
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)
 
-HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level Design）是部署 HCS 所需的详细设计文档，通常以 Excel 文件形式记录部署云平台所需的各类网络平面（Network Plane）地址段规划。随着管理的云平台数量增多，传统的本地 Excel 管理方式存在以下问题：
+DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理系统，用于集中维护 Region、网络平面类型、CIDR、VLAN、网关和变更历史等数据。随着管理的数据中心和网络平面数量增多，传统的本地 Excel 管理方式存在以下问题：
 
 - 多个 Region 的数据分散在多个文件中，难以统一查询
 - 无法快速检查某 IP 段是否已被分配
 - 数据变更无版本追溯能力
 - 多人协作困难
 
-本系统旨在提供一个 Web 管理平台来解决上述问题。
+本系统旨在提供一个统一的 Web 管理平台来解决上述问题。
 
 ## 使用流程
 
 1. 先创建**网络平面类型**（如管理平面、业务平面等）— 这是全局字典
-2. 创建 **Region**（如 HCS华北-北京）
+2. 创建 **Region**（如 北京数据中心）
 3. 进入 Region 详情页，为该 Region **添加**需要的网络平面类型，并填写 CIDR、VLAN ID、网关位置和网关 IP
 4. 需要查重时使用 **IP 查找** 功能
 5. 需要批量导入时使用 **导入** 功能（先下载模板填写后上传）
@@ -193,7 +193,7 @@ cp -n .env.example .env  # 首次运行时复制，可按需修改
 bash start.sh
 ```
 
-也可以手动执行以下步骤。后端命令请始终在 `backend/` 目录下运行；本地 SQLite 默认数据库为 `backend/hcs_lld.db`，配置从 `backend/.env` 加载。`backend/.env` 不提交到仓库，首次运行可从 `backend/.env.example` 复制生成。
+也可以手动执行以下步骤。后端命令请始终在 `backend/` 目录下运行；本地 SQLite 默认数据库为 `backend/dc_network_planner.db`，配置从 `backend/.env` 加载。`backend/.env` 不提交到仓库，首次运行可从 `backend/.env.example` 复制生成。
 
 ```bash
 cd ./backend
@@ -265,7 +265,7 @@ python seed.py
 ```
 
 种子数据包含：
-- 2 个 Region："HCS华北-北京"、"HCS华东-上海"
+- 2 个 Region："北京数据中心"、"上海数据中心"
 - 5 种网络平面类型：管理平面、业务平面、存储平面、内部通信平面、BMC平面
 - 每个 Region 启用示例网络平面，并带有 CIDR、VLAN 和网关信息
 
@@ -282,7 +282,7 @@ cp -n .env.example .env
 
 | 配置项 | 说明 |
 |---|---|
-| `DATABASE_URL` | SQLAlchemy 数据库连接地址，本地默认使用 `backend/hcs_lld.db` |
+| `DATABASE_URL` | SQLAlchemy 数据库连接地址，本地默认使用 `backend/dc_network_planner.db` |
 | `APP_TIMEZONE` | 应用业务时区，用于解释定时备份 cron 等业务时间 |
 | `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须改成高强度随机值 |
 | `BOOTSTRAP_ADMIN_USERNAME` | 初始管理员用户名，仅在 `users` 表为空时自动创建 |
@@ -390,11 +390,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 61 | 4,257 |
-| 后端测试 | 12 | 1,797 |
-| 前端代码 | 29 | 3,209 |
+| 后端代码 | 61 | 4,360 |
+| 后端测试 | 12 | 1,856 |
+| 前端代码 | 29 | 3,215 |
 | 前端测试 | 0 | 0 |
-| 合计 | 102 | 9,263 |
+| 合计 | 102 | 9,431 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

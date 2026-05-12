@@ -16,7 +16,6 @@ class UserResponse(BaseModel):
     id: str
     username: str
     role: UserRole
-    display_name: str
     is_active: bool
     permitted_regions: list[PermittedRegion] = []
     created_at: str
@@ -27,7 +26,6 @@ class CurrentUserResponse(BaseModel):
     id: str
     username: str
     role: UserRole
-    display_name: str
     is_active: bool
     permitted_regions: list[PermittedRegion] = []
     permissions: list[str] = []
@@ -48,17 +46,20 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=1, max_length=128)
     role: UserRole = "user"
-    display_name: str = Field("", max_length=100)
     is_active: bool = True
     permitted_region_ids: list[str] = []
 
 
 class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
-    display_name: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
     permitted_region_ids: Optional[list[str]] = None
 
 
 class PasswordReset(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=1, max_length=128)

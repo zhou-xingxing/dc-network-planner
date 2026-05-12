@@ -114,7 +114,6 @@ def create_user(db: Session, data: UserCreate) -> User:
         username=data.username,
         password_hash=hash_password(data.password),
         role=data.role,
-        display_name=data.display_name or data.username,
         is_active=data.is_active,
     )
     db.add(user)
@@ -141,8 +140,6 @@ def update_user(db: Session, user_id: str, data: UserUpdate) -> Optional[User]:
         if data.is_active is False:
             _ensure_not_last_administrator(db, user, target_active=False)
         user.is_active = data.is_active
-    if data.display_name is not None:
-        user.display_name = data.display_name or user.username
     if data.permitted_region_ids is not None:
         _replace_user_region_permissions(db, user, data.permitted_region_ids)
     db.flush()
@@ -155,6 +152,15 @@ def reset_password(db: Session, user_id: str, password: str) -> Optional[User]:
     if not user:
         return None
     user.password_hash = hash_password(password)
+    db.flush()
+    return user
+
+
+def change_password(db: Session, user: User, current_password: str, new_password: str) -> User:
+    """Change the current user's password after verifying the old password."""
+    if not verify_password(current_password, user.password_hash):
+        raise BusinessError("原密码错误")
+    user.password_hash = hash_password(new_password)
     db.flush()
     return user
 
@@ -177,7 +183,6 @@ def ensure_bootstrap_admin(db: Session) -> None:
         username=settings.BOOTSTRAP_ADMIN_USERNAME,
         password_hash=hash_password(settings.BOOTSTRAP_ADMIN_PASSWORD),
         role="administrator",
-        display_name=settings.BOOTSTRAP_ADMIN_DISPLAY_NAME or settings.BOOTSTRAP_ADMIN_USERNAME,
         is_active=True,
     )
     db.add(admin)
@@ -190,7 +195,6 @@ def user_to_response(user: User) -> dict[str, Any]:
         "id": user.id,
         "username": user.username,
         "role": user.role,
-        "display_name": user.display_name or user.username,
         "is_active": user.is_active,
         "permitted_regions": [
             {"id": permission.region.id, "name": permission.region.name}

@@ -39,7 +39,7 @@
 graph TB
     subgraph Frontend["前端 (Vue 3 + Vite)"]
         direction TB
-        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 用户管理"]
+        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 个人主页 · 用户管理"]
         FE_Axios["Axios / REST API<br/>自动注入 Authorization: Bearer token"]
         FE_Pages --> FE_Axios
     end
@@ -74,7 +74,7 @@ graph TB
 前端采用 Vue 3 Composition API + Vue Router 组织页面：
 
 - **App.vue** - 根组件，仅包含 `<router-view />`
-- **AppLayout.vue** - 布局组件，包含侧边栏导航 + 顶栏（面包屑 + 当前用户 + 退出登录）+ 内容区
+- **AppLayout.vue** - 布局组件，包含侧边栏导航 + 顶栏（面包屑 + 当前用户入口 + 退出登录）+ 内容区
 - **views/** - 页面组件，每个对应一个路由
 - **api/** - Axios 请求封装模块，按业务领域拆分
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
@@ -97,7 +97,6 @@ erDiagram
         string username UK
         string password_hash
         string role
-        string display_name
         bool   is_active
         datetime created_at
         datetime updated_at
@@ -195,7 +194,6 @@ erDiagram
 | username | String(100) | NOT NULL, UNIQUE, INDEX | 登录用户名 |
 | password_hash | String(255) | NOT NULL | PBKDF2-HMAC-SHA256 密码哈希 |
 | role | String(20) | NOT NULL, INDEX | administrator/user |
-| display_name | String(100) | NOT NULL | 页面显示名和审计操作者名 |
 | is_active | Boolean | NOT NULL, default=true | 是否允许登录 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
@@ -331,6 +329,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|
 | POST | `/api/auth/login` | 用户名密码登录，返回 Bearer token |
 | GET | `/api/auth/me` | 查询当前登录用户、角色、Region 授权和权限集合 |
+| PUT | `/api/auth/password` | 当前登录用户修改自己的密码 |
 | GET/POST | `/api/users` | 用户列表/创建用户（administrator） |
 | PUT/DELETE | `/api/users/{id}` | 更新/删除用户（administrator）；不允许删除当前登录用户 |
 | POST | `/api/users/{id}/reset-password` | 重置用户密码（administrator） |
@@ -465,7 +464,7 @@ GET /api/backup/records
 4. `administrator` 可以管理其他用户账号，但不能删除当前登录用户。
 5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
 6. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
-7. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`。
+7. 变更日志的 `operator` 统一使用当前登录用户 `username`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
 ### 5.5 启动初始化
@@ -478,7 +477,6 @@ GET /api/backup/records
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | 访问 token 有效期 |
 | `BOOTSTRAP_ADMIN_USERNAME` | `admin` | 初始管理员用户名 |
 | `BOOTSTRAP_ADMIN_PASSWORD` | `admin` | 初始管理员密码，生产环境必须覆盖 |
-| `BOOTSTRAP_ADMIN_DISPLAY_NAME` | `系统管理员` | 初始管理员显示名 |
 
 ## 6. 关键技术决策
 
@@ -636,6 +634,7 @@ GET /api/backup/records
 | `/import-export` | ImportExport.vue | Excel 导入/导出（Tab 页切换） |
 | `/change-logs` | ChangeLogs.vue | 变更历史筛选查询 |
 | `/backup-config` | BackupConfig.vue | 备份目标、定时任务、备份历史 |
+| `/profile` | Profile.vue | 当前用户账号信息、角色和 Region 授权 |
 | `/users` | Users.vue | 用户、角色和 Region 授权管理（administrator） |
 
 路由守卫规则：

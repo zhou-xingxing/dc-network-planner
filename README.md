@@ -249,10 +249,14 @@ cd ./frontend
 npm install
 
 # 启动开发服务器
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
-启动验证：访问 http://localhost:5173
+启动验证：
+- 本机访问：http://localhost:5173 或 http://127.0.0.1:5173
+- 局域网访问：使用 Vite 输出的 Network 地址
+
+`bash start.sh` 已经内置上述启动参数，推荐优先使用脚本启动。
 
 > 前端 Vite 开发服务器已配置 API 代理，`/api` 请求自动转发到 `http://localhost:8000`。
 
@@ -289,7 +293,6 @@ cp -n .env.example .env
 | `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须改成高强度随机值 |
 | `BOOTSTRAP_ADMIN_USERNAME` | 初始管理员用户名，仅在 `users` 表为空时自动创建 |
 | `BOOTSTRAP_ADMIN_PASSWORD` | 初始管理员密码，仅在 `users` 表为空时自动创建 |
-| `BOOTSTRAP_ADMIN_DISPLAY_NAME` | 初始管理员显示名，仅在 `users` 表为空时自动创建 |
 | `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录 |
 | `BACKUP_SCHEDULER_INTERVAL_SECONDS` | 后台备份调度扫描周期 |
 | `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | 是否允许 CIDR 跨 Region 重叠；启动后不应变更 |
@@ -394,11 +397,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 66 | 4,683 |
-| 后端测试 | 16 | 2,247 |
-| 前端代码 | 29 | 3,215 |
+| 后端代码 | 67 | 4,713 |
+| 后端测试 | 16 | 2,262 |
+| 前端代码 | 30 | 3,791 |
 | 前端测试 | 0 | 0 |
-| 合计 | 111 | 10,145 |
+| 合计 | 113 | 10,766 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

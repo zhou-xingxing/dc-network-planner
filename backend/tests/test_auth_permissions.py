@@ -36,6 +36,33 @@ def test_invalid_token_returns_401(client):
     assert response.status_code == 401
 
 
+def test_current_user_can_change_own_password(client, admin_headers):
+    response = client.put(
+        "/api/auth/password",
+        headers=admin_headers,
+        json={"current_password": "admin", "new_password": "new-admin-password"},
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "admin"
+
+    old_login = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    assert old_login.status_code == 401
+
+    new_login = client.post("/api/auth/login", json={"username": "admin", "password": "new-admin-password"})
+    assert new_login.status_code == 200
+
+
+def test_current_user_change_password_rejects_wrong_current_password(client, admin_headers):
+    response = client.put(
+        "/api/auth/password",
+        headers=admin_headers,
+        json={"current_password": "wrong", "new_password": "new-admin-password"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "原密码错误"
+
+
 def test_user_can_read_all_but_only_write_assigned_region(client, admin_headers, user_headers_factory):
     region_a = client.post("/api/regions", json={"name": "A"}, headers=admin_headers).json()
     region_b = client.post("/api/regions", json={"name": "B"}, headers=admin_headers).json()
@@ -86,6 +113,6 @@ def test_audit_operator_comes_from_authenticated_user(client, admin_headers, tes
     session = Session(test_db)
     try:
         entry = session.query(ChangeLog).filter(ChangeLog.entity_type == "region").one()
-        assert entry.operator == "系统管理员"
+        assert entry.operator == "admin"
     finally:
         session.close()

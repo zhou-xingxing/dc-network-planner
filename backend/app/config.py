@@ -36,9 +36,8 @@ class Settings(BaseSettings):
     # --- 初始管理员账户（仅首次启动时自动创建） ---
     BOOTSTRAP_ADMIN_USERNAME: str = "admin"  # 初始管理员登录用户名
     BOOTSTRAP_ADMIN_PASSWORD: str = "admin"  # 初始管理员登录密码
-    BOOTSTRAP_ADMIN_DISPLAY_NAME: str = "系统管理员"  # 初始管理员显示名称
 
-    model_config = {"env_file": BACKEND_DIR / ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": BACKEND_DIR / ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

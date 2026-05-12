@@ -11,7 +11,6 @@
     <el-card>
       <el-table :data="users" border v-loading="loading" style="width: 100%">
         <el-table-column prop="username" label="用户名" min-width="130" />
-        <el-table-column prop="display_name" label="显示名" min-width="130" />
         <el-table-column prop="role" label="角色" width="150">
           <template #default="{ row }">
             <el-tag :type="row.role === 'administrator' ? 'warning' : 'success'">{{ row.role }}</el-tag>
@@ -47,9 +46,6 @@
         </el-form-item>
         <el-form-item label="密码" prop="password" v-if="!editingId">
           <el-input v-model="form.password" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="显示名">
-          <el-input v-model="form.display_name" />
         </el-form-item>
         <el-form-item label="角色">
           <el-segmented v-model="form.role" :options="roleOptions" />
@@ -107,7 +103,6 @@ const form = reactive({
   username: '',
   password: '',
   role: 'user',
-  display_name: '',
   is_active: true,
   permitted_region_ids: [],
 })
@@ -146,7 +141,6 @@ function openCreate() {
     username: '',
     password: '',
     role: 'user',
-    display_name: '',
     is_active: true,
     permitted_region_ids: [],
   })
@@ -159,7 +153,6 @@ function openEdit(row) {
     username: row.username,
     password: '',
     role: row.role,
-    display_name: row.display_name,
     is_active: row.is_active,
     permitted_region_ids: row.permitted_regions.map((region) => region.id),
   })
@@ -172,7 +165,6 @@ async function handleSubmit() {
   try {
     const payload = {
       role: form.role,
-      display_name: form.display_name,
       is_active: form.is_active,
       permitted_region_ids: form.role === 'user' ? form.permitted_region_ids : [],
     }

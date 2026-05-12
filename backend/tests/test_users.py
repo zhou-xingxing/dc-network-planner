@@ -46,14 +46,12 @@ def test_user_management_crud_with_region_permissions(client, admin_headers):
             "username": "alice",
             "password": "initial-password",
             "role": "user",
-            "display_name": "Alice",
             "permitted_region_ids": [region_b["id"], region_a["id"]],
         },
     )
     assert create_response.status_code == 201
     created = create_response.json()
     assert created["username"] == "alice"
-    assert created["display_name"] == "Alice"
     assert created["permitted_regions"] == [
         {"id": region_a["id"], "name": "Region-A"},
         {"id": region_b["id"], "name": "Region-B"},
@@ -69,14 +67,12 @@ def test_user_management_crud_with_region_permissions(client, admin_headers):
         f"/api/users/{created['id']}",
         headers=admin_headers,
         json={
-            "display_name": "Alice Updated",
             "is_active": False,
             "permitted_region_ids": [region_b["id"]],
         },
     )
     assert update_response.status_code == 200
     updated = update_response.json()
-    assert updated["display_name"] == "Alice Updated"
     assert updated["is_active"] is False
     assert updated["permitted_regions"] == [{"id": region_b["id"], "name": "Region-B"}]
 
@@ -138,7 +134,7 @@ def test_user_management_returns_404_for_missing_user(client, admin_headers):
     update_response = client.put(
         "/api/users/missing-user",
         headers=admin_headers,
-        json={"display_name": "Nobody"},
+        json={"is_active": False},
     )
     reset_response = client.post(
         "/api/users/missing-user/reset-password",

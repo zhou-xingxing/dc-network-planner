@@ -81,7 +81,6 @@ def user_headers_factory(test_db, client):
                     username=username,
                     password="password",
                     role="user",
-                    display_name="Region User",
                     permitted_region_ids=list(permitted_region_ids),
                 ),
             )
@@ -98,4 +97,4 @@ def user_headers_factory(test_db, client):
 @pytest.fixture
 def operator():
     """Default audited operator after authentication."""
-    return "系统管理员"
+    return "admin"

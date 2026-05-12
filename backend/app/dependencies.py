@@ -55,5 +55,5 @@ def require_region_business_write(
 
 
 def operator_name(current_user: User) -> str:
-    """Return the audit operator name for the current user."""
-    return current_user.display_name or current_user.username
+    """Return the username used as the audit operator."""
+    return current_user.username

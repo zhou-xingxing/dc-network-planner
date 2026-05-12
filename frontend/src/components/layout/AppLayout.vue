@@ -18,10 +18,9 @@
         <div class="header-right">
           <div class="operator-area">
             <el-icon><UserFilled /></el-icon>
-            <span class="operator-label">{{ appStore.currentUser?.display_name || appStore.currentUser?.username }}</span>
-            <el-tag size="small" :type="appStore.isAdministrator ? 'warning' : 'success'">
-              {{ appStore.isAdministrator ? 'administrator' : 'user' }}
-            </el-tag>
+            <button class="operator-name" type="button" @click="router.push('/profile')">
+              {{ appStore.currentUser?.username }}
+            </button>
             <el-button size="small" text @click="handleLogout">退出</el-button>
           </div>
         </div>
@@ -129,10 +128,24 @@ function handleLogout() {
   color: var(--color-text-tertiary);
 }
 
-.operator-label {
+.operator-name {
+  max-width: 180px;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  font-family: inherit;
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+.operator-name:hover {
+  color: var(--color-primary);
 }
 
 .app-content {

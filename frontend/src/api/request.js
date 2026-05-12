@@ -20,6 +20,10 @@ request.interceptors.response.use(
   (error) => {
     const appStore = useAppStore()
     if (error.response?.status === 401) {
+      if (error.config?.url === '/auth/login') {
+        ElMessage.error(error.response?.data?.detail || '用户名或密码错误')
+        return Promise.reject(error)
+      }
       appStore.logout()
       if (window.location.pathname !== '/login') {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search)

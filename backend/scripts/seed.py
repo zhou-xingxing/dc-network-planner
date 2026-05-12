@@ -1,6 +1,6 @@
 """
 种子数据脚本：为本地开发和演示写入一组符合业务约束的样例数据。
-运行方式：python seed.py
+运行方式：python scripts/seed.py
 """
 
 import logging

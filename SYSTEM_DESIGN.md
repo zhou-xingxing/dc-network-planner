@@ -554,6 +554,8 @@ GET /api/backup/records
 
 **备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的备份文件。文件命名格式为 `{backup_file_prefix}{YYYYMMDDHHMMSS}`，默认如 `dc_network_planner_data_backup_20260428143005`。
 
+**数据库恢复脚本**：恢复入口为 `backend/scripts/restore_database.py`，可通过 `cd backend && make restore-db BACKUP=./backups/<backup_file>` 调用。脚本只支持 SQLite：先按应用配置解析目标数据库路径，再校验备份文件是有效 SQLite 且包含当前项目必要数据表；恢复前默认复制当前数据库为 `*.pre_restore_<timestamp>_<id>.db` 安全快照，随后使用 SQLite backup API 写入临时数据库文件并原子替换目标数据库。恢复前应停止后端服务，避免运行中的进程继续持有旧数据库连接；对象存储备份需要先下载成本地文件再执行脚本。
+
 **保存配置校验决策**：保存备份配置时执行轻量目标探测，不触发真实数据库备份。
 
 **理由**：备份配置保存成功应尽量代表目标路径、对象存储凭据和 Bucket 可用，但保存表单不应产生完整备份文件、对象存储流量和执行历史噪声。轻量探测能在保存阶段暴露路径不可写、AK/SK 错误、Bucket 不存在等配置问题，同时保持“保存配置”和“立即备份”的语义边界清晰。
@@ -590,7 +592,7 @@ GET /api/backup/records
 - local：文件直接保存到 `local_path`
 - object_storage：先生成临时文件，再通过 boto3 上传到 S3 兼容对象存储。完整备份路径为 `endpoint_url + bucket + object_prefix + 备份文件名`；实现会归一化斜杠，记录为 `{endpoint_url}/{bucket}/{object_prefix}/{backup_file_prefix}{YYYYMMDDHHMMSS}`
 
-**限制**：当前实现只支持 SQLite 数据库备份；若未来切换 PostgreSQL/MySQL，需要替换备份生成策略（如 pg_dump/mysqldump 或数据库原生快照）。
+**限制**：当前实现只支持 SQLite 数据库备份与恢复；若未来切换 PostgreSQL/MySQL，需要替换备份生成和恢复策略（如 pg_dump/mysqldump 或数据库原生快照）。
 
 ### 6.9 时间与时区策略
 

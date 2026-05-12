@@ -11,12 +11,12 @@
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)
 
-DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理系统，用于集中维护 Region、网络平面类型、CIDR、VLAN、网关和变更历史等数据。随着管理的数据中心和网络平面数量增多，传统的本地 Excel 管理方式存在以下问题：
+DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理系统，用于集中维护 Region、网络平面类型、CIDR、VLAN、网关和变更历史等数据。随着当前数据中心建设规模日益增大，其涉及的 Region 数量和网络平面类型也逐渐增加，传统的本地 Excel 管理方式存在以下问题：
 
-- 多个 Region 的数据分散在多个文件中，难以统一查询
+- 多个 Region 的数据分散在多个本地文件中，难以统一查询和管理
 - 无法快速检查某 IP 段是否已被分配
-- 数据变更无版本追溯能力
 - 多人协作困难
+- 数据变更无版本追溯能力
 
 本系统旨在提供一个统一的 Web 管理平台来解决上述问题。
 
@@ -102,7 +102,9 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   ├── Makefile                          # make lint / make test / make check
 │   ├── run_tests.sh                      # 测试运行脚本
 │   ├── run_checks.sh                     # 代码检查脚本
-│   ├── seed.py                           # 种子数据脚本
+│   ├── scripts/                          # 后端运维脚本
+│   │   ├── seed.py                       # 种子数据脚本
+│   │   └── restore_database.py           # 数据库恢复脚本
 │   └── start.sh                          # 后端启动脚本
 │
 ├── frontend/                             # Vue 3 前端
@@ -261,7 +263,7 @@ npm run dev
 ```bash
 cd ./backend
 source venv/bin/activate
-python seed.py
+python scripts/seed.py
 ```
 
 种子数据包含：
@@ -392,11 +394,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 63 | 4,488 |
-| 后端测试 | 15 | 2,110 |
+| 后端代码 | 66 | 4,683 |
+| 后端测试 | 16 | 2,247 |
 | 前端代码 | 29 | 3,215 |
 | 前端测试 | 0 | 0 |
-| 合计 | 107 | 9,813 |
+| 合计 | 111 | 10,145 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

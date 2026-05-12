@@ -4,10 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import seed as seed_module
 from app.database import Base
 from app.models import RegionNetworkPlane
 from app.utils.ip_utils import check_overlap, ip_belongs_to_network, parse_cidr, parse_ip
+from scripts import seed as seed_module
 
 
 def test_seed_creates_non_overlapping_sample_planes(monkeypatch):

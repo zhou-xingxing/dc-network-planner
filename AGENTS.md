@@ -22,6 +22,7 @@ DC Network Planner 是用于管理数据中心 Region 网络平面地址规划�
 - 分层保持 `routers/ -> services/ -> models/`：Router 处理 HTTP 和依赖注入，Service 承载业务逻辑并直接访问 SQLAlchemy Model，Schema 只做 Pydantic v2 API 请求/响应定义。
 - Service 层禁止调用 `db.commit()` / `db.rollback()`；HTTP 请求路径由 `get_db()` 统一提交或回滚。Service 只在需要获取 ID、触发约束或保证同事务内可见时使用 `db.flush()`。非 HTTP 入口（启动初始化、后台调度任务等）必须在入口函数显式管理事务。
 - 业务违规使用自定义业务异常，Service 层 `raise`，Router 层转换为 `HTTPException`；不要用 `ValueError` 表达业务异常，也不要用 `None` 表示校验失败。查找不到场景允许返回 `None`。
+- 校验分层保持清晰：Router / Schema 负责请求形状、字段长度、枚举和数值范围；Service 先执行不依赖数据库的纯输入校验，再执行依赖数据库上下文的业务校验；数据变更和审计日志写入只发生在强校验通过后。
 - 所有数据变更审计由 Service 在 mutate 后显式调用 `log_change()`，不要改成 SQLAlchemy events。
 - CIDR/IP 判断统一使用 `app/utils/ip_utils.py` 和标准库 `ipaddress`；SQLite 没有原生 CIDR 类型，当前设计是在 Python 内存中做重叠与归属检测。
 - Python 公共函数/类保持类型注解和 Google 风格 docstring；格式化与导入排序交给 black、ruff 和现有脚本。

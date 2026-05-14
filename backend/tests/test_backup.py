@@ -13,7 +13,15 @@ import app.services.backup as backup_service
 from app.exceptions import BusinessError
 from app.models.backup import BackupConfig, BackupRecord
 from app.models.region import Region
+from app.schemas.backup import BackupConfigUpdate
 from app.services.backup import calculate_next_run, run_due_backup, utcnow
+
+
+class _NoQueryDB:
+    """用于确认不依赖数据库的备份配置错误会先被拦截。"""
+
+    def query(self, *args, **kwargs):
+        raise AssertionError("invalid backup config should not touch database")
 
 
 def test_get_backup_config_returns_default(client, admin_headers):
@@ -38,9 +46,7 @@ def test_backup_read_endpoints_allow_normal_user(client, user_headers_factory):
     assert records_response.status_code == 200
 
 
-def test_backup_write_endpoints_require_administrator(
-    client, tmp_path, user_headers_factory
-):
+def test_backup_write_endpoints_require_administrator(client, tmp_path, user_headers_factory):
     user_headers = user_headers_factory([])
 
     update_response = client.put(
@@ -81,9 +87,7 @@ def test_update_backup_config(client, tmp_path, admin_headers):
     assert data["next_run_at"] is not None
 
 
-def test_update_backup_config_validates_cron_expression(
-    client, tmp_path, admin_headers
-):
+def test_update_backup_config_validates_cron_expression(client, tmp_path, admin_headers):
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -99,9 +103,21 @@ def test_update_backup_config_validates_cron_expression(
     assert "分钟" in response.json()["detail"]
 
 
-def test_update_backup_config_validates_backup_file_prefix(
-    client, tmp_path, admin_headers
-):
+def test_update_backup_config_invalid_cron_is_rejected_before_database_query(tmp_path):
+    """无效 cron 是纯输入错误，应在读取现有备份配置前返回。"""
+    data = BackupConfigUpdate(
+        enabled=True,
+        cron_expression="60 2 * * *",
+        backup_file_prefix="backup_",
+        method="local",
+        local_path=str(tmp_path),
+    )
+
+    with pytest.raises(BusinessError):
+        backup_service.update_backup_config(_NoQueryDB(), data, "tester")
+
+
+def test_update_backup_config_validates_backup_file_prefix(client, tmp_path, admin_headers):
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -118,9 +134,21 @@ def test_update_backup_config_validates_backup_file_prefix(
     assert "路径分隔符" in response.json()["detail"]
 
 
-def test_update_backup_config_validates_local_path_is_writable(
-    client, tmp_path, admin_headers
-):
+def test_update_backup_config_invalid_prefix_is_rejected_before_database_query(tmp_path):
+    """备份文件名前缀格式错误不需要读取现有配置。"""
+    data = BackupConfigUpdate(
+        enabled=True,
+        cron_expression="0 2 * * *",
+        backup_file_prefix="backup/",
+        method="local",
+        local_path=str(tmp_path),
+    )
+
+    with pytest.raises(BusinessError):
+        backup_service.update_backup_config(_NoQueryDB(), data, "tester")
+
+
+def test_update_backup_config_validates_local_path_is_writable(client, tmp_path, admin_headers):
     file_path = tmp_path / "not-a-directory"
     file_path.write_text("occupied")
 
@@ -140,9 +168,7 @@ def test_update_backup_config_validates_local_path_is_writable(
     assert "本地备份路径不可写" in response.json()["detail"]
 
 
-def test_update_backup_config_validates_object_storage_target(
-    client, monkeypatch, admin_headers
-):
+def test_update_backup_config_validates_object_storage_target(client, monkeypatch, admin_headers):
     calls = []
 
     class FakeS3Client:
@@ -185,15 +211,11 @@ def test_update_backup_config_validates_object_storage_target(
     )
     assert calls[1][0] == "put"
     assert calls[1][1]["Bucket"] == "dc-network-planner-backup"
-    assert calls[1][1]["Key"].startswith(
-        "dc-network-planner/.dc_network_planner_backup_probe_"
-    )
+    assert calls[1][1]["Key"].startswith("dc-network-planner/.dc_network_planner_backup_probe_")
     assert calls[2][0] == "delete"
 
 
-def test_update_backup_config_reuses_existing_object_storage_secret(
-    client, monkeypatch, admin_headers
-):
+def test_update_backup_config_reuses_existing_object_storage_secret(client, monkeypatch, admin_headers):
     client_calls = []
 
     class FakeS3Client:
@@ -243,9 +265,7 @@ def test_update_backup_config_reuses_existing_object_storage_secret(
     assert client_calls[-1]["aws_secret_access_key"] == "first-secret"
 
 
-def test_update_backup_config_rejects_invalid_object_storage_target(
-    client, monkeypatch, admin_headers
-):
+def test_update_backup_config_rejects_invalid_object_storage_target(client, monkeypatch, admin_headers):
     class FakeS3Client:
         def put_object(self, **kwargs):
             raise RuntimeError("access denied")
@@ -317,9 +337,7 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
     assert re.fullmatch(r"dc_\d{14}", target.name)
 
 
-def test_run_backup_records_object_storage_full_target(
-    client, monkeypatch, admin_headers
-):
+def test_run_backup_records_object_storage_full_target(client, monkeypatch, admin_headers):
     calls = []
 
     class FakeS3Client:
@@ -368,9 +386,7 @@ def test_run_backup_records_object_storage_full_target(
     assert re.fullmatch(r"dc-network-planner/dc_\d{14}", upload_call[3])
 
 
-def test_run_backup_records_failed_status_when_backup_creation_fails(
-    client, tmp_path, monkeypatch, admin_headers
-):
+def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp_path, monkeypatch, admin_headers):
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -387,9 +403,7 @@ def test_run_backup_records_failed_status_when_backup_creation_fails(
     def fail_create_sqlite_backup(*args, **kwargs):
         raise RuntimeError("disk full")
 
-    monkeypatch.setattr(
-        backup_service, "_create_sqlite_backup", fail_create_sqlite_backup
-    )
+    monkeypatch.setattr(backup_service, "_create_sqlite_backup", fail_create_sqlite_backup)
 
     response = client.post("/api/backup/run", headers=admin_headers)
 
@@ -402,9 +416,7 @@ def test_run_backup_records_failed_status_when_backup_creation_fails(
     assert data["file_size"] is None
 
 
-def test_run_backup_records_failed_upload_and_refreshes_next_run(
-    client, monkeypatch, admin_headers, test_db
-):
+def test_run_backup_records_failed_upload_and_refreshes_next_run(client, monkeypatch, admin_headers, test_db):
     calls = []
 
     class FakeS3Client:
@@ -467,9 +479,7 @@ def test_run_backup_records_failed_upload_and_refreshes_next_run(
         session.close()
 
 
-def test_run_backup_returns_409_for_business_error(
-    client, tmp_path, monkeypatch, admin_headers
-):
+def test_run_backup_returns_409_for_business_error(client, tmp_path, monkeypatch, admin_headers):
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -486,9 +496,7 @@ def test_run_backup_returns_409_for_business_error(
     def fail_with_business_error(*args, **kwargs):
         raise BusinessError("当前备份功能仅支持 SQLite 数据库")
 
-    monkeypatch.setattr(
-        backup_service, "_create_sqlite_backup", fail_with_business_error
-    )
+    monkeypatch.setattr(backup_service, "_create_sqlite_backup", fail_with_business_error)
 
     response = client.post("/api/backup/run", headers=admin_headers)
 
@@ -496,9 +504,7 @@ def test_run_backup_returns_409_for_business_error(
     assert "SQLite" in response.json()["detail"]
 
 
-def test_run_backup_rejects_incomplete_object_storage_config(
-    client, admin_headers, test_db
-):
+def test_run_backup_rejects_incomplete_object_storage_config(client, admin_headers, test_db):
     session = Session(test_db)
     try:
         config = session.query(BackupConfig).first()
@@ -628,43 +634,29 @@ def test_calculate_next_run_daily_uses_configured_time():
     before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
     after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(before_time, "30 2 * * *") == datetime(
-        2026, 4, 25, 18, 30, tzinfo=timezone.utc
-    )
-    assert calculate_next_run(after_time, "30 2 * * *") == datetime(
-        2026, 4, 26, 18, 30, tzinfo=timezone.utc
-    )
+    assert calculate_next_run(before_time, "30 2 * * *") == datetime(2026, 4, 25, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(after_time, "30 2 * * *") == datetime(2026, 4, 26, 18, 30, tzinfo=timezone.utc)
 
 
 def test_calculate_next_run_weekly_uses_weekday_and_time():
     sunday_before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
     sunday_after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(sunday_before_time, "30 2 * * 0") == datetime(
-        2026, 4, 25, 18, 30, tzinfo=timezone.utc
-    )
-    assert calculate_next_run(sunday_after_time, "30 2 * * 7") == datetime(
-        2026, 5, 2, 18, 30, tzinfo=timezone.utc
-    )
-    assert calculate_next_run(sunday_after_time, "30 2 * * 1") == datetime(
-        2026, 4, 26, 18, 30, tzinfo=timezone.utc
-    )
+    assert calculate_next_run(sunday_before_time, "30 2 * * 0") == datetime(2026, 4, 25, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(sunday_after_time, "30 2 * * 7") == datetime(2026, 5, 2, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(sunday_after_time, "30 2 * * 1") == datetime(2026, 4, 26, 18, 30, tzinfo=timezone.utc)
 
 
 def test_calculate_next_run_supports_steps_ranges_and_lists():
     base_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(
-        2026, 4, 25, 18, 15, tzinfo=timezone.utc
-    )
+    assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(2026, 4, 25, 18, 15, tzinfo=timezone.utc)
 
 
 def test_calculate_next_run_uses_cron_day_or_weekday_semantics():
     base_time = datetime(2026, 4, 30, 18, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(base_time, "30 2 2 * 1") == datetime(
-        2026, 5, 1, 18, 30, tzinfo=timezone.utc
-    )
+    assert calculate_next_run(base_time, "30 2 2 * 1") == datetime(2026, 5, 1, 18, 30, tzinfo=timezone.utc)
 
 
 def test_parse_cron_expression_rejects_invalid_formats():

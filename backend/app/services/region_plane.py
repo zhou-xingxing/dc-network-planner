@@ -118,6 +118,8 @@ def enable_plane_for_region(
     Raises:
         BusinessError: 该类型已启用、CIDR 格式无效、父级未启用或 CIDR 越界。
     """
+    validated_net, validated_gateway_ip = _validate_network_format(cidr, gateway_ip)
+
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == plane_type_id).first()
     if not pt:
         raise BusinessError("网络平面类型不存在")
@@ -143,6 +145,8 @@ def enable_plane_for_region(
         cidr=cidr,
         vlan_id=vlan_id,
         gateway_ip=gateway_ip,
+        validated_cidr=validated_net,
+        validated_gateway_ip=validated_gateway_ip,
     )
 
     rp = RegionNetworkPlane(
@@ -203,6 +207,11 @@ def update_plane_for_region(
     Raises:
         BusinessError: 更新后的唯一性、CIDR、父子范围或网关 IP 校验不通过。
     """
+    validated_net: IPNetwork | None = None
+    validated_gateway_ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None
+    if cidr is not None:
+        validated_net, validated_gateway_ip = _validate_network_format(cidr, gateway_ip)
+
     plane = (
         db.query(RegionNetworkPlane)
         .filter(
@@ -243,6 +252,8 @@ def update_plane_for_region(
         vlan_id=vlan_id,
         gateway_ip=gateway_ip,
         current_plane=plane,
+        validated_cidr=validated_net,
+        validated_gateway_ip=validated_gateway_ip,
     )
 
     changes: dict[str, tuple[str, str]] = {}
@@ -385,12 +396,57 @@ def _validate_plane_assignment(
     vlan_id: int | None,
     gateway_ip: str | None,
     current_plane: RegionNetworkPlane | None = None,
+    validated_cidr: IPNetwork | None = None,
+    validated_gateway_ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None,
 ) -> str | None:
-    """校验 Region 网络平面的 CIDR、VLAN 和网关信息。"""
+    """校验 Region 网络平面的 CIDR、VLAN 和网关信息。
+
+    校验顺序（按依赖关系排列，无依赖的优先）：
+    1. CIDR 格式解析（可由调用方提前完成并传入 validated_cidr 复用结果）。
+    2. 网关 IP 格式、版本、是否落在 CIDR 内（纯计算，不依赖 DB）。
+    3. VLAN 是否冲突（查 DB）。
+    4. CIDR 是否与同级/跨 Region 平面重叠（查 DB）。
+    5. 子平面 CIDR 是否在父平面范围内（查 DB）。
+    6. 网关 IP 是否符合推荐位置（纯计算，返回弱校验提示）。
+    """
+    if validated_cidr is None:
+        validated_cidr, validated_gateway_ip = _validate_network_format(cidr, gateway_ip)
+    _validate_assignment_context(
+        db,
+        region_id=region_id,
+        plane_type=plane_type,
+        scope=scope,
+        cidr=cidr,
+        net=validated_cidr,
+        vlan_id=vlan_id,
+        current_plane=current_plane,
+    )
+    return _validate_gateway_ip_policy(validated_cidr, validated_gateway_ip, is_private=plane_type.is_private)
+
+
+def _validate_network_format(
+    cidr: str, gateway_ip: str | None
+) -> tuple[IPNetwork, ipaddress.IPv4Address | ipaddress.IPv6Address | None]:
+    """纯输入形式校验：校验并解析 CIDR 与网关 IP。"""
     net = parse_cidr(cidr)
     if not net:
         raise BusinessError(f"无效的 CIDR 格式: {cidr}")
+    ip = _validate_gateway_ip_format(net, gateway_ip)
+    return net, ip
 
+
+def _validate_assignment_context(
+    db: Session,
+    *,
+    region_id: str,
+    plane_type: NetworkPlaneType,
+    scope: str,
+    cidr: str,
+    net: IPNetwork,
+    vlan_id: int | None,
+    current_plane: RegionNetworkPlane | None,
+) -> None:
+    """依赖数据库与上下文的语义校验：VLAN、CIDR 重叠、父子范围。"""
     _validate_vlan_assignment_by_policy(
         db,
         region_id,
@@ -434,8 +490,6 @@ def _validate_plane_assignment(
             raise BusinessError("父级网络平面 CIDR 格式无效")
         if not network_is_subnet_of(net, parent_net):
             raise BusinessError(f"子平面 CIDR {cidr} 必须在父平面 CIDR {parent_plane.cidr} 范围内")
-
-    return _validate_gateway_ip_policy(net, gateway_ip, is_private=plane_type.is_private)
 
 
 def _validate_vlan_assignment_by_policy(
@@ -627,8 +681,10 @@ def normalize_plane_scope(scope: str | None) -> str:
     return scope or DEFAULT_PLANE_SCOPE
 
 
-def _validate_gateway_ip_policy(net: IPNetwork, gateway_ip: str | None, *, is_private: bool) -> str | None:
-    """强校验网关 IP 在 CIDR 内，弱校验网关 IP 是否符合推荐位置。"""
+def _validate_gateway_ip_format(
+    net: IPNetwork, gateway_ip: str | None
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """强校验网关 IP 的格式、IP 版本与是否落在 CIDR 内。"""
     if not gateway_ip:
         return None
     ip = parse_ip(gateway_ip)
@@ -638,6 +694,18 @@ def _validate_gateway_ip_policy(net: IPNetwork, gateway_ip: str | None, *, is_pr
         if ip.version != net.version:
             raise BusinessError(f"网关 IP {gateway_ip} 必须与平面 CIDR {net.with_prefixlen} 使用相同 IP 版本")
         raise BusinessError(f"网关 IP {gateway_ip} 必须在平面 CIDR {net.with_prefixlen} 范围内")
+    return ip
+
+
+def _validate_gateway_ip_policy(
+    net: IPNetwork,
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None,
+    *,
+    is_private: bool,
+) -> str | None:
+    """弱校验网关 IP 是否符合推荐位置（强校验应在调用前由 _validate_gateway_ip_format 完成）。"""
+    if ip is None:
+        return None
 
     expected = _expected_gateway_ip(net, is_private=is_private)
     if ip != expected:
@@ -648,6 +716,11 @@ def _validate_gateway_ip_policy(net: IPNetwork, gateway_ip: str | None, *, is_pr
 
 
 def _expected_gateway_ip(net: IPNetwork, *, is_private: bool) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """计算给定 CIDR 的推荐网关 IP 位置。
+
+    私网平面：网络地址 + 1（/31、/32、/127、/128 等特殊前缀回退到网络地址）。
+    非私网平面：广播地址 - 1（IPv4 /31、/32 回退到广播地址；IPv6 回退到最后一个地址）。
+    """
     if net.num_addresses == 1:
         return net.network_address
     if is_private:

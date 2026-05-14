@@ -9,6 +9,13 @@ from sqlalchemy.orm import Session
 from app.services import region_plane as region_plane_service
 
 
+class _NoQueryDB:
+    """用于确认纯输入错误会在访问数据库前被拦截。"""
+
+    def query(self, *args, **kwargs):
+        raise AssertionError("invalid plane assignment should not touch database")
+
+
 def _create_plane_type(client, admin_headers, name, parent_id=None, **kwargs):
     """创建网络平面类型。"""
     payload = {"name": name}
@@ -215,6 +222,31 @@ def test_create_root_plane_invalid_cidr(client, admin_headers, user_headers_fact
 
     assert resp.status_code == 409
     assert "无效的 CIDR" in resp.json()["detail"]
+
+
+def test_create_root_plane_invalid_cidr_is_rejected_before_database_query():
+    """无效 CIDR 属于纯输入错误，应先拦截再访问数据库。"""
+    with pytest.raises(region_plane_service.BusinessError):
+        region_plane_service.enable_plane_for_region(
+            _NoQueryDB(),
+            "region-id",
+            "plane-type-id",
+            "invalid-cidr",
+            "tester",
+        )
+
+
+def test_create_root_plane_gateway_ip_outside_cidr_is_rejected_before_database_query():
+    """网关 IP 明显不在 CIDR 内时，不需要查询网络平面类型。"""
+    with pytest.raises(region_plane_service.BusinessError):
+        region_plane_service.enable_plane_for_region(
+            _NoQueryDB(),
+            "region-id",
+            "plane-type-id",
+            "10.0.0.0/24",
+            "tester",
+            gateway_ip="10.0.1.1",
+        )
 
 
 def test_create_root_plane_invalid_vlan_id(client, admin_headers, user_headers_factory):

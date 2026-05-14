@@ -26,6 +26,11 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[Region
     Raises:
         BusinessError: q 不是合法的 IP 或 CIDR 格式。
     """
+    ip = parse_ip(q)
+    net = parse_cidr(q) if not ip else None
+    if not ip and not net:
+        raise BusinessError(f"Invalid IP address or CIDR: {q}")
+
     planes = (
         db.query(RegionNetworkPlane)
         .join(Region, RegionNetworkPlane.region_id == Region.id)
@@ -40,9 +45,6 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[Region
         .all()
     )
     results: list[RegionNetworkPlane] = []
-
-    ip = parse_ip(q)
-    net = parse_cidr(q) if not ip else None
 
     if ip:
         for plane in planes:
@@ -60,7 +62,5 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[Region
                 existing = parse_cidr(plane.cidr or "")
                 if existing and check_overlap(existing, net):
                     results.append(plane)
-    else:
-        raise BusinessError(f"Invalid IP address or CIDR: {q}")
 
     return results

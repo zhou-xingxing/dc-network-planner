@@ -243,6 +243,8 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     Returns:
         更新后的备份配置。
     """
+    _validate_backup_basic_format(data.cron_expression, data.backup_file_prefix)
+
     config = get_backup_config(db)
     old_value = _config_snapshot(config)
 
@@ -253,10 +255,12 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     config.local_path = data.local_path
     config.endpoint_url = data.endpoint_url
     config.access_key = data.access_key
-    config.secret_key = data.secret_key or (config.secret_key if data.method == "object_storage" else None)
+    config.secret_key = data.secret_key or (  # 对象存储模式下不传则保留旧值；切回本地时清空
+        config.secret_key if data.method == "object_storage" else None
+    )
     config.bucket = data.bucket
     config.object_prefix = data.object_prefix
-    _validate_config(config)
+    _validate_storage_config(config)
     _validate_backup_target(config)
     config.next_run_at = to_db_datetime(_next_run_from_config(config, utcnow())) if data.enabled else None
     db.flush()
@@ -305,7 +309,8 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
         BusinessError: 配置不完整或对象存储依赖不可用。
     """
     config = get_backup_config(db)
-    _validate_config(config)
+    _validate_backup_basic_format(config.cron_expression, config.backup_file_prefix)
+    _validate_storage_config(config)
 
     record = BackupRecord(
         status="running",
@@ -379,12 +384,7 @@ def run_due_backup(db: Session) -> Optional[BackupRecord]:
     return run_backup(db, operator="system", scheduled=True)
 
 
-def _validate_config(config: BackupConfig) -> None:
-    parse_cron_expression(config.cron_expression)
-    if not config.backup_file_prefix:
-        raise BusinessError("备份文件名前缀不能为空")
-    if "/" in config.backup_file_prefix or "\\" in config.backup_file_prefix:
-        raise BusinessError("备份文件名前缀不能包含路径分隔符")
+def _validate_storage_config(config: BackupConfig) -> None:
     if config.method == "local" and not config.local_path:
         raise BusinessError("本地备份路径不能为空")
     if config.method == "object_storage":
@@ -394,6 +394,16 @@ def _validate_config(config: BackupConfig) -> None:
                 missing.append(field_name)
         if missing:
             raise BusinessError(f"对象存储配置不完整: {', '.join(missing)}")
+
+
+def _validate_backup_basic_format(cron_expression: str, backup_file_prefix: str) -> None:
+    """校验备份调度和文件名前缀这类纯输入格式。"""
+    parse_cron_expression(cron_expression.strip())
+    backup_file_prefix = backup_file_prefix.strip()
+    if not backup_file_prefix:
+        raise BusinessError("备份文件名前缀不能为空")
+    if "/" in backup_file_prefix or "\\" in backup_file_prefix:
+        raise BusinessError("备份文件名前缀不能包含路径分隔符")
 
 
 def _validate_backup_target(config: BackupConfig) -> None:

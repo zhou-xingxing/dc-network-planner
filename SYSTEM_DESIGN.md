@@ -259,7 +259,7 @@ erDiagram
 
 Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。Region 内 CIDR 不允许与非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。CIDR 是否允许跨 Region 重叠由启动期静态配置 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 
-`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。`vlan_id` 在同一 Region 内不能重复，是否允许跨 Region 重复由启动期静态配置 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空时不参与重复性检查。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
+`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。`vlan_id` 在同一 Region 内不能重复，是否允许跨 Region 重复由启动期静态配置 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空时不参与重复性检查。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。CIDR 格式和网关 IP 归属这类不依赖数据库的输入错误会在访问网络平面类型、Region 平面实例等数据库数据前先被拦截。
 
 #### change_logs
 
@@ -392,10 +392,11 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 查询参数：`q` (IP/CIDR), `exact` (bool)
 
 处理逻辑：
-1. 先尝试解析为单 IP（`parse_ip`），若成功则查找包含该 IP 的所有分配
+1. 先尝试解析为单 IP（`parse_ip`）
 2. 若单 IP 解析失败，尝试解析为 CIDR（`parse_cidr`）
-3. `exact=true` 时，CIDR 精确匹配；`exact=false` 时，CIDR 重叠匹配
-4. 在 Python 内存中使用 `ipaddress` 模块进行包含/重叠检测（SQLite 无原生 CIDR 类型）
+3. 若两种解析均失败，直接返回 400，不执行网络平面查询
+4. IP 查询返回包含该 IP 的所有分配；CIDR 查询在 `exact=true` 时精确匹配，在 `exact=false` 时重叠匹配
+5. 在 Python 内存中使用 `ipaddress` 模块进行包含/重叠检测（SQLite 无原生 CIDR 类型）
 
 #### Excel 导入（两阶段）
 
@@ -422,6 +423,7 @@ PUT /api/backup/config
   → backup_file_prefix 控制备份文件名前缀，实际文件名为 backup_file_prefix + YYYYMMDDHHMMSS
   → cron_expression 使用五段式 cron：分 时 日 月 周，秒固定为 0
   → 支持 *、数字、列表、范围和步长，例如 0 2 * * *、*/15 * * * *、30 3 * * 1-5
+  → cron_expression 和 backup_file_prefix 这类不依赖现有配置的格式错误会在读取数据库配置前先被拦截
   → 保存时校验备份目标可用
   → 启用定时任务时按 cron_expression 计算 next_run_at
 

@@ -1,5 +1,17 @@
 """IP Lookup tests."""
 
+import pytest
+
+from app.exceptions import BusinessError
+from app.services.lookup import lookup_region_planes
+
+
+class _NoQueryDB:
+    """用于确认非法查询在进入数据库前就被拒绝。"""
+
+    def query(self, *args, **kwargs):
+        raise AssertionError("invalid lookup query should not touch database")
+
 
 def _setup_data(client, admin_headers, user_headers_factory):
     """Create a region with an enabled network plane for lookup tests."""
@@ -72,3 +84,9 @@ def test_lookup_no_match(client, admin_headers, user_headers_factory):
 def test_lookup_invalid_query(client, admin_headers):
     resp = client.get("/api/lookup?q=not-an-ip", headers=admin_headers)
     assert resp.status_code == 400
+
+
+def test_lookup_invalid_query_is_rejected_before_database_query():
+    """非法 IP/CIDR 输入应先被校验拦截，避免无意义全表扫描。"""
+    with pytest.raises(BusinessError):
+        lookup_region_planes(_NoQueryDB(), "not-an-ip")

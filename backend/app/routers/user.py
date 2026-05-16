@@ -7,7 +7,7 @@ from app.exceptions import BusinessError
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.user import PasswordReset, UserCreate, UserResponse, UserUpdate
-from app.services.auth import create_user, delete_user, list_users, reset_password, update_user, user_to_response
+from app.services.user import create_user, delete_user, list_users, reset_password, update_user, user_to_response
 
 router = APIRouter(prefix="/api/users", tags=["Users"], dependencies=[Depends(require_administrator)])
 

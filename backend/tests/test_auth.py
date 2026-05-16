@@ -101,12 +101,6 @@ def test_administrator_cannot_write_region_business_data(client, admin_headers):
     assert response.status_code == 403
 
 
-def test_last_administrator_cannot_be_disabled(client, admin_headers):
-    me = client.get("/api/auth/me", headers=admin_headers).json()
-    response = client.put(f"/api/users/{me['id']}", json={"is_active": False}, headers=admin_headers)
-    assert response.status_code == 409
-
-
 def test_audit_operator_comes_from_authenticated_user(client, admin_headers, test_db):
     client.post("/api/regions", json={"name": "Audit"}, headers={**admin_headers, "X-Operator": "spoofed"})
 

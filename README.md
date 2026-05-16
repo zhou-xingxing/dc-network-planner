@@ -85,11 +85,13 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   │   │   ├── network_plane_type.py     # 网络平面类型业务逻辑
 │   │   │   ├── lookup.py                 # IP/CIDR 查找逻辑
 │   │   │   ├── excel.py                  # Excel 导入预览/确认逻辑
-│   │   │   ├── auth.py                   # 本地账号、密码和 JWT 逻辑
+│   │   │   ├── auth.py                   # 登录认证和 JWT 逻辑
+│   │   │   ├── user.py                   # 用户管理和权限序列化逻辑
 │   │   │   ├── backup.py                 # 备份配置、校验和执行逻辑
 │   │   │   └── backup_scheduler.py       # 后台备份调度器
 │   │   └── utils/                        # 工具函数
 │   │       ├── __init__.py
+│   │       ├── password.py               # 密码哈希与校验
 │   │       ├── ip_utils.py               # IP/CIDR 解析、重叠检测
 │   │       ├── excel_utils.py            # Excel 模板生成、导入解析、导出构建
 │   │       └── time_utils.py             # UTC 存储与应用时区转换

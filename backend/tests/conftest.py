@@ -9,8 +9,8 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.schemas.user import UserCreate
-from app.services.auth import create_user, ensure_bootstrap_admin
 from app.services.backup import ensure_backup_config
+from app.services.user import create_user, ensure_bootstrap_admin
 
 
 @pytest.fixture

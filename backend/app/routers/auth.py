@@ -6,7 +6,8 @@ from app.dependencies import get_current_user
 from app.exceptions import BusinessError
 from app.models.user import User
 from app.schemas.user import CurrentUserResponse, LoginRequest, LoginResponse, PasswordChange
-from app.services.auth import authenticate_user, change_password, create_access_token, current_user_to_response
+from app.services.auth import authenticate_user, change_password, create_access_token
+from app.services.user import current_user_to_response
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 

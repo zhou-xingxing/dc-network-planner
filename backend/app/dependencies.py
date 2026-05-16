@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.exceptions import BusinessError
 from app.models.user import User
-from app.services.auth import decode_access_token, get_user, get_user_permitted_region_ids
+from app.services.auth import decode_access_token
+from app.services.user import get_user, get_user_permitted_region_ids
 
 
 def get_current_user(

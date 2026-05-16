@@ -48,11 +48,13 @@ graph TB
         direction TB
         Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel<br/>change-logs · stats · backup"]
         Deps["Dependencies<br/>Bearer Token 认证 · 角色校验 · Region 授权校验"]
-        Services["Services（业务逻辑层）<br/>auth / region / plane_type / region_plane / excel / change_log / backup<br/>· 密码哈希与 token 签发<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
+        Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / excel / change_log / backup<br/>· token 签发与认证鉴权<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
+        Utils["Utils（工具函数）<br/>密码哈希与校验 · IP/CIDR 解析 · Excel 文件处理 · 时间转换"]
         Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
         Routers --> Deps
         Deps --> Services
         Routers --> Services --> Models
+        Services --> Utils
     end
 
     DB[("SQLite<br/>dc_network_planner.db")]

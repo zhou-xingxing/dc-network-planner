@@ -166,3 +166,11 @@ def test_administrator_cannot_delete_self(client, admin_headers):
 
     assert response.status_code == 409
     assert response.json()["detail"] == "不能删除当前登录用户"
+
+
+def test_last_administrator_cannot_be_disabled(client, admin_headers):
+    me = client.get("/api/auth/me", headers=admin_headers).json()
+
+    response = client.put(f"/api/users/{me['id']}", json={"is_active": False}, headers=admin_headers)
+
+    assert response.status_code == 409

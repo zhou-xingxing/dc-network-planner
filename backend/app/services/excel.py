@@ -8,7 +8,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.exceptions import BusinessError
+from app.exceptions import BusinessError, ResourceNotFoundError
 from app.services.region_plane import enable_plane_for_region, normalize_plane_scope
 from app.utils.excel_utils import parse_excel
 from app.utils.ip_utils import parse_cidr, parse_ip
@@ -189,10 +189,9 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
                 vlan_id=row["vlan_id"],
                 gateway_position=row.get("gateway_position"),
                 gateway_ip=row.get("gateway_ip"),
-                region_name=row["region_name"],
             )
             imported += 1
-        except BusinessError as e:
+        except (BusinessError, ResourceNotFoundError) as e:
             errors.append({"row": row["row_number"], "errors": [str(e)]})
 
     return {

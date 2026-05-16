@@ -1,6 +1,6 @@
-"""网络平面全局树状结构测试。
+"""Region 网络平面实例测试。
 
-覆盖：网络平面类型父子关系、Region 启用平面、CIDR 约束校验、树形结构查询、级联删除。
+覆盖：Region 启用平面、CIDR/VLAN/网关约束校验、树形结构查询和级联删除。
 """
 
 import pytest
@@ -222,6 +222,16 @@ def test_create_root_plane_invalid_cidr(client, admin_headers, user_headers_fact
 
     assert resp.status_code == 409
     assert "无效的 CIDR" in resp.json()["detail"]
+
+
+def test_create_root_plane_missing_plane_type_returns_404(client, admin_headers, user_headers_factory):
+    """网络平面类型不存在时由 Service 返回 404 语义。"""
+    region, _, user_headers = _setup(client, admin_headers, user_headers_factory)
+
+    resp = _enable_plane(client, region["id"], "missing-plane-type", "10.0.0.0/24", user_headers)
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Plane type not found"
 
 
 def test_create_root_plane_invalid_cidr_is_rejected_before_database_query():
@@ -646,18 +656,6 @@ def test_validate_network_overlap_policy_on_startup_rejects_existing_cross_regio
             region_plane_service.validate_network_overlap_policy_on_startup(session)
     finally:
         session.close()
-
-
-def test_create_child_depth_exceeded(client, admin_headers):
-    """全局类型树超过 3 级嵌套应报错。"""
-    root = _create_plane_type(client, admin_headers, "根平面").json()
-    child = _create_plane_type(client, admin_headers, "子平面", parent_id=root["id"]).json()
-    grandchild = _create_plane_type(client, admin_headers, "孙平面", parent_id=child["id"]).json()
-
-    resp = _create_plane_type(client, admin_headers, "四级平面", parent_id=grandchild["id"])
-
-    assert resp.status_code == 409
-    assert "最大嵌套层级" in resp.json()["detail"]
 
 
 def test_get_plane_tree(client, admin_headers, user_headers_factory):

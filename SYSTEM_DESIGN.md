@@ -65,8 +65,8 @@ graph TB
 
 后端采用经典的三层架构：
 
-1. **Router 层** - API 端点定义，请求参数解析，响应序列化。依赖 `get_db` 获取数据库会话，依赖 `get_current_user` / `require_administrator` / `ensure_region_business_write_allowed` 完成认证与授权。
-2. **Service 层** - 核心业务逻辑，包括 CIDR 重叠检测、变更日志记录、Excel 解析验证。Router 层调用 Service 层，Service 层操作 Model 层。
+1. **Router 层** - API 端点定义，请求参数解析，HTTP 状态码转换和响应序列化。依赖 `get_db` 获取数据库会话，依赖 `get_current_user` / `require_administrator` / `ensure_region_business_write_allowed` 完成认证与授权；不直接访问 SQLAlchemy Model。
+2. **Service 层** - 核心业务逻辑和数据访问，包括 CIDR 重叠检测、变更日志记录、Excel 解析验证、列表聚合统计和响应所需业务上下文。Router 层调用 Service 层，Service 层操作 Model 层；同一请求链路中已获取并校验过的实体或上下文应继续复用，避免重复查询同一业务对象。
 3. **Model 层** - SQLAlchemy ORM 模型，定义数据表结构和关系。通过 Alembic 管理数据库迁移。
 
 ### 3.2 前端组件架构
@@ -449,6 +449,8 @@ GET /api/backup/records
 | 参数校验失败 | 422 |
 | 资源冲突（重复名称/重叠 CIDR） | 409 |
 | 服务器内部错误 | 500 |
+
+Service 层使用 `ResourceNotFoundError` 表达明确的实体不存在场景，Router 层转换为 404；使用 `BusinessError` 表达业务规则冲突，Router 层转换为 409。
 
 ### 5.4 认证与权限
 

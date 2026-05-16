@@ -13,6 +13,7 @@ from app.routers import (
     excel,
     lookup,
     network_plane_types,
+    region_planes,
     regions,
     stats,
     users,
@@ -64,6 +65,7 @@ app.add_middleware(
 # Register routers
 app.include_router(auth.router)
 app.include_router(regions.router)
+app.include_router(region_planes.router)
 app.include_router(network_plane_types.router)
 app.include_router(lookup.router)
 app.include_router(excel.router)

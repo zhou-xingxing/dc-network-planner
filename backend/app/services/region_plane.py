@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import ipaddress
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.exceptions import BusinessError
+from app.exceptions import BusinessError, ResourceNotFoundError
 from app.models.network_plane_type import NetworkPlaneType
+from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
 from app.services.change_log import log_change
 from app.utils.ip_utils import (
@@ -20,6 +22,23 @@ from app.utils.ip_utils import (
 from app.utils.time_utils import format_datetime
 
 DEFAULT_PLANE_SCOPE = "Global"
+
+
+@dataclass(frozen=True)
+class RegionPlaneMutationResult:
+    """Region 平面变更结果及响应所需上下文。"""
+
+    plane: RegionNetworkPlane
+    gateway_ip_warning: str | None
+    parent_plane_id: str | None
+
+
+@dataclass(frozen=True)
+class AssignmentValidationContext:
+    """Region 平面写入校验后可复用的上下文。"""
+
+    gateway_ip_warning: str | None
+    parent_plane_id: str | None
 
 
 def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
@@ -87,6 +106,14 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     return roots
 
 
+def get_region_plane_tree_for_region(db: Session, region_id: str) -> list[dict[str, Any]] | None:
+    """查询指定 Region 的网络平面树，Region 不存在时返回 None。"""
+    region = db.get(Region, region_id)
+    if not region:
+        return None
+    return get_region_plane_tree(db, region_id)
+
+
 def enable_plane_for_region(
     db: Session,
     region_id: str,
@@ -94,12 +121,11 @@ def enable_plane_for_region(
     cidr: str,
     operator: str,
     *,
-    scope: str = DEFAULT_PLANE_SCOPE,
+    scope: str | None = DEFAULT_PLANE_SCOPE,
     vlan_id: int | None = None,
     gateway_position: str | None = None,
     gateway_ip: str | None = None,
-    region_name: str | None = None,
-) -> tuple[RegionNetworkPlane, str | None]:
+) -> RegionPlaneMutationResult:
     """为 Region 启用一个网络平面类型。
 
     Args:
@@ -112,19 +138,20 @@ def enable_plane_for_region(
         vlan_id: VLAN ID，可选。
         gateway_position: 网关位置，可选。
         gateway_ip: 网关 IP 地址，可选。
-        region_name: Region 名称，供审计日志展示使用。
-
     Returns:
-        新创建的 RegionNetworkPlane 对象和可选弱校验提示。
+        新创建的 RegionNetworkPlane 对象及响应上下文。
 
     Raises:
         BusinessError: 该类型已启用、CIDR 格式无效、父级未启用或 CIDR 越界。
     """
     validated_net, validated_gateway_ip = _validate_network_format(cidr, gateway_ip)
 
+    region = db.get(Region, region_id)
+    if not region:
+        raise ResourceNotFoundError("Region not found")
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == plane_type_id).first()
     if not pt:
-        raise BusinessError("网络平面类型不存在")
+        raise ResourceNotFoundError("Plane type not found")
     scope = normalize_plane_scope(scope)
 
     existing = (
@@ -139,7 +166,7 @@ def enable_plane_for_region(
     if existing:
         raise BusinessError(f"该网络平面类型已在本Region 的 {scope} 作用域中启用，不能重复创建")
 
-    gateway_ip_warning = _validate_plane_assignment(
+    assignment_context = _validate_plane_assignment(
         db,
         region_id=region_id,
         plane_type=pt,
@@ -170,12 +197,16 @@ def enable_plane_for_region(
         action="create",
         operator=operator,
         new_value=(
-            f"region={region_name or '未知Region'}, plane_type={pt.name}, cidr={cidr}, "
+            f"region={region.name}, plane_type={pt.name}, cidr={cidr}, "
             f"scope={scope}, vlan_id={vlan_id or ''}, "
             f"gateway_position={gateway_position or ''}, gateway_ip={gateway_ip or ''}"
         ),
     )
-    return rp, gateway_ip_warning
+    return RegionPlaneMutationResult(
+        plane=rp,
+        gateway_ip_warning=assignment_context.gateway_ip_warning,
+        parent_plane_id=assignment_context.parent_plane_id,
+    )
 
 
 def update_plane_for_region(
@@ -189,7 +220,7 @@ def update_plane_for_region(
     vlan_id: int | None = None,
     gateway_position: str | None = None,
     gateway_ip: str | None = None,
-) -> tuple[RegionNetworkPlane | None, str | None]:
+) -> RegionPlaneMutationResult | None:
     """更新 Region 网络平面实例，不允许修改网络平面类型。
 
     Args:
@@ -204,7 +235,7 @@ def update_plane_for_region(
         gateway_ip: 新网关 IP。
 
     Returns:
-        更新后的 RegionNetworkPlane 对象和可选弱校验提示；不存在时返回 (None, None)。
+        更新后的 RegionNetworkPlane 对象及响应上下文；不存在时返回 None。
 
     Raises:
         BusinessError: 更新后的唯一性、CIDR、父子范围或网关 IP 校验不通过。
@@ -223,7 +254,7 @@ def update_plane_for_region(
         .first()
     )
     if not plane:
-        return None, None
+        return None
     if not plane.plane_type:
         raise BusinessError("网络平面类型不存在")
 
@@ -245,7 +276,7 @@ def update_plane_for_region(
     if existing:
         raise BusinessError(f"该网络平面类型已在本Region 的 {new_scope} 作用域中启用，不能重复创建")
 
-    gateway_ip_warning = _validate_plane_assignment(
+    assignment_context = _validate_plane_assignment(
         db,
         region_id=region_id,
         plane_type=plane.plane_type,
@@ -288,7 +319,34 @@ def update_plane_for_region(
                 operator=operator,
             )
         db.flush()
-    return plane, gateway_ip_warning
+    return RegionPlaneMutationResult(
+        plane=plane,
+        gateway_ip_warning=assignment_context.gateway_ip_warning,
+        parent_plane_id=assignment_context.parent_plane_id,
+    )
+
+
+def serialize_region_plane_result(result: RegionPlaneMutationResult) -> dict[str, Any]:
+    """序列化 Region 网络平面变更结果。"""
+    plane = result.plane
+    plane_type = plane.plane_type
+    return {
+        "id": plane.id,
+        "region_id": plane.region_id,
+        "plane_type_id": plane.plane_type_id,
+        "plane_type_name": plane_type.name if plane_type else "",
+        "scope": plane.scope,
+        "cidr": plane.cidr,
+        "vlan_id": plane.vlan_id,
+        "gateway_position": plane.gateway_position,
+        "gateway_ip": plane.gateway_ip,
+        "gateway_ip_warning": result.gateway_ip_warning,
+        "parent_id": result.parent_plane_id,
+        "plane_type_parent_id": plane_type.parent_id if plane_type else None,
+        "created_at": format_datetime(plane.created_at),
+        "updated_at": format_datetime(plane.updated_at),
+        "children": [],
+    }
 
 
 def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operator: str) -> bool:
@@ -316,22 +374,18 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
     if not plane:
         return False
 
-    # 递归收集所有子代平面 ID（用于审计日志）
-    descendant_ids = _collect_descendant_ids(db, plane)
+    # 递归收集所有子代平面对象，后续审计和删除共用同一批上下文
+    descendants = _collect_descendants(db, plane)
 
     # 审计日志：记录被级联删除的子平面
-    for child_id in descendant_ids:
-        cp = db.get(RegionNetworkPlane, child_id)
+    for child in descendants:
         log_change(
             db,
             entity_type="region_network_plane",
-            entity_id=child_id,
+            entity_id=child.id,
             action="delete",
             operator=operator,
-            old_value=(
-                f"由父平面 {_format_plane_ref(plane)} 删除级联触发, "
-                f"子平面={_format_plane_ref(cp) if cp else '未知平面'}"
-            ),
+            old_value=(f"由父平面 {_format_plane_ref(plane)} 删除级联触发, " f"子平面={_format_plane_ref(child)}"),
         )
 
     # 审计日志：记录本平面删除
@@ -344,10 +398,8 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
         old_value=_format_plane_ref(plane),
     )
 
-    for child_id in reversed(descendant_ids):
-        child = db.get(RegionNetworkPlane, child_id)
-        if child:
-            db.delete(child)
+    for child in reversed(descendants):
+        db.delete(child)
     db.delete(plane)
     db.flush()
     return True
@@ -355,7 +407,12 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
 
 def _collect_descendant_ids(db: Session, plane: RegionNetworkPlane) -> list[str]:
     """递归收集所有后代平面 ID（深度优先）。"""
-    result: list[str] = []
+    return [child.id for child in _collect_descendants(db, plane)]
+
+
+def _collect_descendants(db: Session, plane: RegionNetworkPlane) -> list[RegionNetworkPlane]:
+    """递归收集所有后代平面对象（深度优先）。"""
+    result: list[RegionNetworkPlane] = []
     child_candidates = (
         db.query(RegionNetworkPlane)
         .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
@@ -368,8 +425,8 @@ def _collect_descendant_ids(db: Session, plane: RegionNetworkPlane) -> list[str]
     for child in child_candidates:
         if not _is_effective_parent(db, parent=plane, child=child):
             continue
-        result.append(child.id)
-        result.extend(_collect_descendant_ids(db, child))
+        result.append(child)
+        result.extend(_collect_descendants(db, child))
     return result
 
 
@@ -402,7 +459,7 @@ def _validate_plane_assignment(
     current_plane: RegionNetworkPlane | None = None,
     validated_cidr: IPNetwork | None = None,
     validated_gateway_ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None,
-) -> str | None:
+) -> AssignmentValidationContext:
     """校验 Region 网络平面的 CIDR、VLAN 和网关信息。
 
     校验顺序（按依赖关系排列，无依赖的优先）：
@@ -415,7 +472,7 @@ def _validate_plane_assignment(
     """
     if validated_cidr is None:
         validated_cidr, validated_gateway_ip = _validate_network_format(cidr, gateway_ip)
-    _validate_assignment_context(
+    parent_plane = _validate_assignment_context(
         db,
         region_id=region_id,
         plane_type=plane_type,
@@ -425,7 +482,13 @@ def _validate_plane_assignment(
         vlan_id=vlan_id,
         current_plane=current_plane,
     )
-    return _validate_gateway_ip_policy(validated_cidr, validated_gateway_ip, is_private=plane_type.is_private)
+    gateway_ip_warning = _validate_gateway_ip_policy(
+        validated_cidr, validated_gateway_ip, is_private=plane_type.is_private
+    )
+    return AssignmentValidationContext(
+        gateway_ip_warning=gateway_ip_warning,
+        parent_plane_id=parent_plane.id if parent_plane else None,
+    )
 
 
 def _validate_network_format(
@@ -449,7 +512,7 @@ def _validate_assignment_context(
     net: IPNetwork,
     vlan_id: int | None,
     current_plane: RegionNetworkPlane | None,
-) -> None:
+) -> RegionNetworkPlane | None:
     """依赖数据库与上下文的语义校验：VLAN、CIDR 重叠、父子范围。"""
     _validate_vlan_assignment_by_policy(
         db,
@@ -458,11 +521,14 @@ def _validate_assignment_context(
         exclude_plane_id=current_plane.id if current_plane else None,
     )
 
-    related_plane_ids = _collect_effective_ancestor_ids(db, region_id, plane_type, scope)
+    ancestors = _collect_effective_ancestors(db, region_id, plane_type, scope)
+    parent_plane = ancestors[0] if ancestors else None
+    related_plane_ids = [plane.id for plane in ancestors]
     if current_plane:
         related_plane_ids.append(current_plane.id)
-        related_plane_ids.extend(_collect_descendant_ids(db, current_plane))
-        _ensure_descendants_within_cidr(db, current_plane, net, cidr)
+        descendants = _collect_descendants(db, current_plane)
+        related_plane_ids.extend(child.id for child in descendants)
+        _ensure_descendants_within_cidr(descendants, net, cidr)
 
     overlaps = _find_cidr_overlaps_for_assignment(
         db,
@@ -484,7 +550,6 @@ def _validate_assignment_context(
             raise BusinessError("；".join(messages))
 
     if plane_type.parent_id:
-        parent_plane = _find_parent_plane(db, region_id, plane_type.parent_id, scope)
         if not parent_plane:
             raise BusinessError("父级网络平面尚未在该 Region 启用")
         if not parent_plane.cidr:
@@ -494,6 +559,7 @@ def _validate_assignment_context(
             raise BusinessError("父级网络平面 CIDR 格式无效")
         if not network_is_subnet_of(net, parent_net):
             raise BusinessError(f"子平面 CIDR {cidr} 必须在父平面 CIDR {parent_plane.cidr} 范围内")
+    return parent_plane
 
 
 def _validate_vlan_assignment_by_policy(
@@ -520,34 +586,32 @@ def _validate_vlan_assignment_by_policy(
         raise BusinessError(f"VLAN {vlan_id} 已被其他 Region 使用：{_format_plane_ref(existing)}")
 
 
-def _collect_effective_ancestor_ids(
+def _collect_effective_ancestors(
     db: Session,
     region_id: str,
     plane_type: NetworkPlaneType,
     scope: str,
-) -> list[str]:
-    ancestor_ids: list[str] = []
+) -> list[RegionNetworkPlane]:
+    ancestors: list[RegionNetworkPlane] = []
     parent_type_id = plane_type.parent_id
     current_scope = scope
     while parent_type_id:
         parent_plane = _find_parent_plane(db, region_id, parent_type_id, current_scope)
         if not parent_plane:
             break
-        ancestor_ids.append(parent_plane.id)
+        ancestors.append(parent_plane)
         parent_type_id = parent_plane.plane_type.parent_id if parent_plane.plane_type else None
         current_scope = parent_plane.scope
-    return ancestor_ids
+    return ancestors
 
 
 def _ensure_descendants_within_cidr(
-    db: Session,
-    plane: RegionNetworkPlane,
+    descendants: list[RegionNetworkPlane],
     net: IPNetwork,
     cidr: str,
 ) -> None:
-    for child_id in _collect_descendant_ids(db, plane):
-        child = db.get(RegionNetworkPlane, child_id)
-        if not child or not child.cidr:
+    for child in descendants:
+        if not child.cidr:
             continue
         child_net = parse_cidr(child.cidr)
         if child_net and not network_is_subnet_of(child_net, net):

@@ -271,6 +271,30 @@ def test_update_plane_type_rejects_move_that_would_exceed_depth(client, admin_he
     assert "最大嵌套层级" in response.json()["detail"]
 
 
+def test_create_plane_type_rejects_depth_exceeded(client, admin_headers):
+    """全局类型树超过 3 级嵌套应报错。"""
+    root = client.post("/api/network-plane-types", json={"name": "根平面"}, headers=admin_headers).json()
+    child = client.post(
+        "/api/network-plane-types",
+        json={"name": "子平面", "parent_id": root["id"]},
+        headers=admin_headers,
+    ).json()
+    grandchild = client.post(
+        "/api/network-plane-types",
+        json={"name": "孙平面", "parent_id": child["id"]},
+        headers=admin_headers,
+    ).json()
+
+    response = client.post(
+        "/api/network-plane-types",
+        json={"name": "四级平面", "parent_id": grandchild["id"]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert "最大嵌套层级" in response.json()["detail"]
+
+
 def test_update_plane_type_rejects_parent_change_when_used_by_region(
     client,
     admin_headers,

@@ -29,6 +29,25 @@ def test_list_regions(client, admin_headers):
     assert [item["name"] for item in data["items"]] == ["Region-A", "Region-B"]
 
 
+def test_list_regions_includes_plane_count(client, admin_headers, user_headers_factory):
+    """Region 列表中的 plane_count 由后端聚合查询返回。"""
+    region = client.post("/api/regions", json={"name": "Region-A", "description": ""}, headers=admin_headers).json()
+    plane_type = client.post("/api/network-plane-types", json={"name": "管理平面"}, headers=admin_headers).json()
+    user_headers = user_headers_factory([region["id"]])
+    client.post(
+        f"/api/regions/{region['id']}/planes",
+        json={"plane_type_id": plane_type["id"], "cidr": "10.0.0.0/24"},
+        headers=user_headers,
+    )
+
+    resp = client.get("/api/regions", headers=admin_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"][0]["name"] == "Region-A"
+    assert data["items"][0]["plane_count"] == 1
+
+
 def test_list_regions_search(client, admin_headers):
     client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     client.post(

@@ -7,7 +7,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, operator_name, require_region_business_write
 from app.exceptions import BusinessError, ResourceNotFoundError
 from app.models.user import User
-from app.schemas.region import RegionPlaneCreate, RegionPlaneUpdate
+from app.schemas.region_plane import RegionPlaneCreate, RegionPlaneUpdate
 from app.services.region_plane import (
     disable_plane_for_region,
     enable_plane_for_region,

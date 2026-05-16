@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from app.utils.ip_utils import parse_ip
+from app.schemas.region_plane import RegionPlaneResponse
 
 
 class RegionBase(BaseModel):
@@ -32,84 +32,3 @@ class RegionResponse(RegionBase):
 
 class RegionDetailResponse(RegionResponse):
     planes: list["RegionPlaneResponse"] = []
-
-
-class RegionPlaneResponse(BaseModel):
-    id: str
-    region_id: str
-    plane_type_id: str
-    plane_type_name: str
-    scope: str = "Global"
-    cidr: str | None = None
-    vlan_id: int | None = None
-    gateway_position: str | None = None
-    gateway_ip: str | None = None
-    gateway_ip_warning: str | None = None
-    parent_id: str | None = None
-    plane_type_parent_id: str | None = None
-    created_at: str
-    updated_at: str
-    children: list["RegionPlaneResponse"] = []
-
-    model_config = {"from_attributes": True}
-
-
-class RegionPlaneCreate(BaseModel):
-    plane_type_id: str
-    scope: str | None = Field("Global", max_length=100, description="作用域，空值会归一化为 Global")
-    cidr: str = Field(..., max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
-    vlan_id: int | None = Field(None, ge=1, le=4094)
-    gateway_position: str | None = Field(None, max_length=255)
-    gateway_ip: str | None = Field(None, max_length=39)
-
-    @field_validator("scope")
-    @classmethod
-    def normalize_scope(cls, value: str | None) -> str:
-        """归一化网络平面作用域，空值统一视为 Global。"""
-        if value is None:
-            return "Global"
-        value = value.strip()
-        return value or "Global"
-
-    @field_validator("gateway_ip")
-    @classmethod
-    def validate_gateway_ip(cls, value: str | None) -> str | None:
-        """校验可选网关 IP 地址格式。"""
-        if value is None:
-            return None
-        value = value.strip()
-        if value == "":
-            return None
-        if not parse_ip(value):
-            raise ValueError("网关 IP 地址格式无效")
-        return value
-
-
-class RegionPlaneUpdate(BaseModel):
-    scope: str | None = Field(None, max_length=100, description="作用域，空值会归一化为 Global")
-    cidr: str | None = Field(None, max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
-    vlan_id: int | None = Field(None, ge=1, le=4094)
-    gateway_position: str | None = Field(None, max_length=255)
-    gateway_ip: str | None = Field(None, max_length=39)
-
-    @field_validator("scope")
-    @classmethod
-    def normalize_scope(cls, value: str | None) -> str | None:
-        """归一化可选网络平面作用域，空字符串统一视为 Global。"""
-        if value is None:
-            return None
-        value = value.strip()
-        return value or "Global"
-
-    @field_validator("gateway_ip")
-    @classmethod
-    def validate_gateway_ip(cls, value: str | None) -> str | None:
-        """校验可选网关 IP 地址格式。"""
-        if value is None:
-            return None
-        value = value.strip()
-        if value == "":
-            return None
-        if not parse_ip(value):
-            raise ValueError("网关 IP 地址格式无效")
-        return value

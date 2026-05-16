@@ -9,14 +9,14 @@ from app.database import Base, SessionLocal, engine
 from app.routers import (
     auth,
     backup,
-    change_logs,
+    change_log,
     excel,
     lookup,
-    network_plane_types,
-    region_planes,
-    regions,
+    network_plane_type,
+    region,
+    region_plane,
     stats,
-    users,
+    user,
 )
 from app.services.auth import ensure_bootstrap_admin
 from app.services.backup import ensure_backup_config
@@ -64,15 +64,15 @@ app.add_middleware(
 
 # Register routers
 app.include_router(auth.router)
-app.include_router(regions.router)
-app.include_router(region_planes.router)
-app.include_router(network_plane_types.router)
+app.include_router(region.router)
+app.include_router(region_plane.router)
+app.include_router(network_plane_type.router)
 app.include_router(lookup.router)
 app.include_router(excel.router)
-app.include_router(change_logs.router)
+app.include_router(change_log.router)
 app.include_router(stats.router)
 app.include_router(backup.router)
-app.include_router(users.router)
+app.include_router(user.router)
 
 
 @app.get("/api/health")

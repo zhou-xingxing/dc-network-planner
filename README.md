@@ -58,6 +58,7 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   │   │   ├── __init__.py
 │   │   │   ├── common.py                 # 通用响应 (PaginatedResponse)
 │   │   │   ├── region.py                 # Region 相关 Schema
+│   │   │   ├── region_plane.py           # Region 网络平面 Schema
 │   │   │   ├── network_plane_type.py     # 网络平面类型 Schema
 │   │   │   ├── change_log.py             # 变更日志 Schema
 │   │   │   ├── lookup.py                 # IP 查找 Schema
@@ -67,13 +68,14 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   │   ├── routers/                      # API 路由
 │   │   │   ├── __init__.py
 │   │   │   ├── auth.py                   # 登录和当前用户 API
-│   │   │   ├── regions.py                # Region + Region-平面关联 API
-│   │   │   ├── network_plane_types.py    # 网络平面类型 API
+│   │   │   ├── region.py                 # Region API
+│   │   │   ├── region_plane.py           # Region 网络平面 API
+│   │   │   ├── network_plane_type.py     # 网络平面类型 API
 │   │   │   ├── lookup.py                 # IP/CIDR 查找 API
 │   │   │   ├── excel.py                  # Excel 导入/导出 API
-│   │   │   ├── change_logs.py            # 变更日志查询 API
+│   │   │   ├── change_log.py             # 变更日志查询 API
 │   │   │   ├── stats.py                  # 统计 API
-│   │   │   ├── users.py                  # 用户管理 API
+│   │   │   ├── user.py                   # 用户管理 API
 │   │   │   └── backup.py                 # 备份配置和执行 API
 │   │   ├── services/                     # 业务逻辑层
 │   │   │   ├── __init__.py
@@ -398,11 +400,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 68 | 4,905 |
+| 后端代码 | 69 | 4,907 |
 | 后端测试 | 16 | 2,457 |
 | 前端代码 | 30 | 3,846 |
 | 前端测试 | 0 | 0 |
-| 合计 | 114 | 11,208 |
+| 合计 | 115 | 11,210 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

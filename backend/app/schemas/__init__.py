@@ -11,8 +11,7 @@ from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, P
 from app.schemas.region import (
     RegionCreate,
     RegionDetailResponse,
-    RegionPlaneCreate,
-    RegionPlaneResponse,
     RegionResponse,
     RegionUpdate,
 )
+from app.schemas.region_plane import RegionPlaneCreate, RegionPlaneResponse, RegionPlaneUpdate

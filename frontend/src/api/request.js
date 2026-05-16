@@ -20,6 +20,20 @@ function showErrorMessage(message) {
   })
 }
 
+function resolveErrorMessage(error) {
+  const detail = error.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail
+  }
+  if (error.code === 'ECONNABORTED') {
+    return '请求超时，请稍后重试'
+  }
+  if (!error.response) {
+    return '网络连接异常，请检查网络后重试'
+  }
+  return '操作失败，请稍后重试'
+}
+
 request.interceptors.request.use((config) => {
   const appStore = useAppStore()
   if (appStore.token) {
@@ -49,8 +63,7 @@ request.interceptors.response.use(
       showErrorMessage(error.response?.data?.detail || '无权限执行该操作')
       return Promise.reject(error)
     }
-    const msg = error.response?.data?.detail || error.message || '网络错误'
-    showErrorMessage(msg)
+    showErrorMessage(resolveErrorMessage(error))
     return Promise.reject(error)
   }
 )

@@ -46,7 +46,7 @@ def update_user_endpoint(user_id: str, data: UserUpdate, db: Session = Depends(g
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="用户不存在")
     return UserResponse(**user_to_response(user))
 
 
@@ -55,7 +55,7 @@ def reset_password_endpoint(user_id: str, data: PasswordReset, db: Session = Dep
     """Reset a user's password."""
     user = reset_password(db, user_id, data.password)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="用户不存在")
     return UserResponse(**user_to_response(user))
 
 
@@ -73,4 +73,4 @@ def delete_user_endpoint(
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not deleted:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="用户不存在")

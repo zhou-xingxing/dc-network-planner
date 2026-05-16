@@ -359,7 +359,7 @@ def test_delete_plane_type_rejects_child_types(client, admin_headers):
     response = client.delete(f"/api/network-plane-types/{parent['id']}", headers=admin_headers)
 
     assert response.status_code == 409
-    assert "child type" in response.json()["detail"]
+    assert "子类型" in response.json()["detail"]
 
 
 def test_delete_plane_type_rejects_region_usage(client, admin_headers, user_headers_factory):
@@ -376,4 +376,4 @@ def test_delete_plane_type_rejects_region_usage(client, admin_headers, user_head
     response = client.delete(f"/api/network-plane-types/{plane_type['id']}", headers=admin_headers)
 
     assert response.status_code == 409
-    assert "in use" in response.json()["detail"]
+    assert "已被 Region 使用" in response.json()["detail"]

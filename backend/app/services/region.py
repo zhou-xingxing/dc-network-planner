@@ -116,7 +116,7 @@ def create_region(db: Session, data: RegionCreate, operator: str) -> Region:
     """
     existing = db.query(Region).filter(Region.name == data.name).first()
     if existing:
-        raise BusinessError(f"Region with name '{data.name}' already exists")
+        raise BusinessError(f"Region 名称已存在: {data.name}")
 
     region = Region(name=data.name, description=data.description or "")
     db.add(region)

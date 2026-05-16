@@ -28,7 +28,7 @@ def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)) -
     """查询 Region 下所有网络平面的树形结构。"""
     tree = get_region_plane_tree_for_region(db, region_id)
     if tree is None:
-        raise HTTPException(status_code=404, detail="Region not found")
+        raise HTTPException(status_code=404, detail="Region 不存在")
     return tree
 
 
@@ -83,7 +83,7 @@ def update_plane_endpoint(
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not result:
-        raise HTTPException(status_code=404, detail="Region plane association not found")
+        raise HTTPException(status_code=404, detail="Region 网络平面不存在")
     return serialize_region_plane_result(result)
 
 
@@ -97,4 +97,4 @@ def disable_plane_endpoint(
     """删除平面节点（级联删除子平面）。"""
     deleted = disable_plane_for_region(db, region_id, plane_id, operator_name(current_user))
     if not deleted:
-        raise HTTPException(status_code=404, detail="Region plane association not found")
+        raise HTTPException(status_code=404, detail="Region 网络平面不存在")

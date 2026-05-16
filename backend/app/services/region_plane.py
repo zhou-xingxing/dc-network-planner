@@ -148,10 +148,10 @@ def enable_plane_for_region(
 
     region = db.get(Region, region_id)
     if not region:
-        raise ResourceNotFoundError("Region not found")
+        raise ResourceNotFoundError("Region 不存在")
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == plane_type_id).first()
     if not pt:
-        raise ResourceNotFoundError("Plane type not found")
+        raise ResourceNotFoundError("网络平面类型不存在")
     scope = normalize_plane_scope(scope)
 
     existing = (

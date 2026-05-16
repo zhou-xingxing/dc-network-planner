@@ -231,7 +231,7 @@ def test_create_root_plane_missing_plane_type_returns_404(client, admin_headers,
     resp = _enable_plane(client, region["id"], "missing-plane-type", "10.0.0.0/24", user_headers)
 
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Plane type not found"
+    assert resp.json()["detail"] == "网络平面类型不存在"
 
 
 def test_create_root_plane_invalid_cidr_is_rejected_before_database_query():

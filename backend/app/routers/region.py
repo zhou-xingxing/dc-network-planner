@@ -81,7 +81,7 @@ def get_region_endpoint(region_id: str, db: Session = Depends(get_db)) -> Region
     """获取 Region 详情（含网络平面树形结构）。"""
     detail = get_region_detail(db, region_id)
     if not detail:
-        raise HTTPException(status_code=404, detail="Region not found")
+        raise HTTPException(status_code=404, detail="Region 不存在")
     return RegionDetailResponse(**detail)
 
 
@@ -95,7 +95,7 @@ def update_region_endpoint(
     """更新 Region 信息。"""
     item = update_region(db, region_id, data, operator_name(current_user))
     if not item:
-        raise HTTPException(status_code=404, detail="Region not found")
+        raise HTTPException(status_code=404, detail="Region 不存在")
     region = item.region
     return RegionResponse(
         id=region.id,
@@ -116,4 +116,4 @@ def delete_region_endpoint(
     """删除 Region。"""
     deleted = delete_region(db, region_id, operator_name(current_user))
     if not deleted:
-        raise HTTPException(status_code=404, detail="Region not found")
+        raise HTTPException(status_code=404, detail="Region 不存在")

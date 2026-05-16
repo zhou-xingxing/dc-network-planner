@@ -64,7 +64,7 @@ def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneT
     """根据 ID 获取网络平面类型详情。"""
     pt = get_plane_type(db, pt_id)
     if not pt:
-        raise HTTPException(status_code=404, detail="Plane type not found")
+        raise HTTPException(status_code=404, detail="网络平面类型不存在")
     return _plane_type_response(pt, get_plane_type_parent_names(db, [pt.id]))
 
 
@@ -81,7 +81,7 @@ def update_plane_type_endpoint(
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not pt:
-        raise HTTPException(status_code=404, detail="Plane type not found")
+        raise HTTPException(status_code=404, detail="网络平面类型不存在")
     return _plane_type_response(pt, get_plane_type_parent_names(db, [pt.id]))
 
 
@@ -111,4 +111,4 @@ def delete_plane_type_endpoint(
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not deleted:
-        raise HTTPException(status_code=404, detail="Plane type not found")
+        raise HTTPException(status_code=404, detail="网络平面类型不存在")

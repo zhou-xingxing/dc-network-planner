@@ -32,7 +32,7 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> tuple[list[
     ip = parse_ip(q)
     net = parse_cidr(q) if not ip else None
     if not ip and not net:
-        raise BusinessError(f"Invalid IP address or CIDR: {q}")
+        raise BusinessError(f"无效的 IP 地址或 CIDR: {q}")
 
     planes = (
         db.query(RegionNetworkPlane)

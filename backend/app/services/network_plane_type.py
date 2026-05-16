@@ -200,10 +200,10 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
     if not pt:
         return False
     if _has_region_plane_reference(db, pt_id):
-        raise BusinessError("Cannot delete plane type in use")
+        raise BusinessError("该网络平面类型已被 Region 使用，不能删除")
     child_count = count_children_for_plane_type(db, pt_id)
     if child_count > 0:
-        raise BusinessError(f"Cannot delete plane type with {child_count} child type(s)")
+        raise BusinessError(f"该网络平面类型存在 {child_count} 个子类型，不能删除")
     log_change(
         db,
         entity_type="network_plane_type",

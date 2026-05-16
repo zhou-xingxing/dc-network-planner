@@ -143,12 +143,18 @@ def update_region(db: Session, region_id: str, data: RegionUpdate, operator: str
 
     Returns:
         更新后的 Region 及平面数量，不存在时返回 None。
+
+    Raises:
+        BusinessError: 更新后的 Region 名称已被其他 Region 使用。
     """
     region = get_region(db, region_id)
     if not region:
         return None
     changes = {}
     if data.name is not None and data.name != region.name:
+        existing = db.query(Region).filter(Region.name == data.name, Region.id != region_id).first()
+        if existing:
+            raise BusinessError(f"Region 名称已存在: {data.name}")
         changes["name"] = (region.name, data.name)
         region.name = data.name
     if data.description is not None and data.description != region.description:

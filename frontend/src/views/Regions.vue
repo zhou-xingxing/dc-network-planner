@@ -32,7 +32,11 @@
             <el-button v-if="appStore.isAdministrator" size="small" type="warning" link @click="showEditDialog(row)">
               <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
             </el-button>
-            <el-popconfirm v-if="appStore.isAdministrator" title="确定删除该 Region？" @confirm="handleDelete(row.id)">
+            <el-popconfirm
+              v-if="appStore.isAdministrator"
+              title="该 Region 下所有网络平面均会被删除，是否确认删除？"
+              @confirm="handleDelete(row.id)"
+            >
               <template #reference>
                 <el-button size="small" type="danger" link>
                   <el-icon style="margin-right: 3px"><Delete /></el-icon>删除

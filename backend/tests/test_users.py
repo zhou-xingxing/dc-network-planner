@@ -1,6 +1,9 @@
 """User management API tests."""
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.models.region import Region
 
 
 def test_create_user_converts_username_integrity_error_to_conflict(client, admin_headers, monkeypatch):
@@ -35,7 +38,7 @@ def test_create_user_converts_username_integrity_error_to_conflict(client, admin
     assert response.json()["detail"] == "用户名已存在"
 
 
-def test_user_management_crud_with_region_permissions(client, admin_headers):
+def test_user_management_crud_with_region_permissions(client, admin_headers, test_db):
     region_b = client.post("/api/regions", json={"name": "Region-B"}, headers=admin_headers).json()
     region_a = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
 
@@ -95,6 +98,14 @@ def test_user_management_crud_with_region_permissions(client, admin_headers):
 
     delete_response = client.delete(f"/api/users/{created['id']}", headers=admin_headers)
     assert delete_response.status_code == 204
+
+    # 删除用户只应清理用户授权关系，不能级联删除被授权管理的 Region。
+    session = Session(test_db)
+    try:
+        remaining_region_names = {region.name for region in session.query(Region).all()}
+        assert remaining_region_names == {"Region-A", "Region-B"}
+    finally:
+        session.close()
 
     missing_response = client.get("/api/users", headers=admin_headers)
     assert missing_response.json()["total"] == 1

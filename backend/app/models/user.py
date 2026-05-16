@@ -44,4 +44,4 @@ class UserRegionPermission(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
 
     user: Mapped[User] = relationship("User", back_populates="region_permissions")
-    region: Mapped[Region] = relationship("Region")
+    region: Mapped[Region] = relationship("Region", back_populates="region_permissions")

@@ -12,6 +12,7 @@ from app.utils.time_utils import utcnow_db
 
 if TYPE_CHECKING:
     from app.models.region_network_plane import RegionNetworkPlane
+    from app.models.user import UserRegionPermission
 
 
 def gen_uuid() -> str:
@@ -30,4 +31,7 @@ class Region(Base):
     # relationships
     region_planes: Mapped[list[RegionNetworkPlane]] = relationship(
         "RegionNetworkPlane", back_populates="region", cascade="all, delete-orphan"
+    )
+    region_permissions: Mapped[list[UserRegionPermission]] = relationship(
+        "UserRegionPermission", back_populates="region", cascade="all, delete-orphan"
     )

@@ -93,7 +93,10 @@ def update_region_endpoint(
     current_user: User = Depends(require_administrator),
 ) -> RegionResponse:
     """更新 Region 信息。"""
-    item = update_region(db, region_id, data, operator_name(current_user))
+    try:
+        item = update_region(db, region_id, data, operator_name(current_user))
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not item:
         raise HTTPException(status_code=404, detail="Region 不存在")
     region = item.region

@@ -339,7 +339,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET/POST | `/api/regions` | 列表/创建 Region；创建需 administrator |
-| GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator |
+| GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator；删除 Region 会级联删除该 Region 下所有网络平面并清理用户 Region 授权 |
 | GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/添加指定网络平面类型节点；写入需 Region 业务权限 |
 | PUT/DELETE | `/api/regions/{id}/planes/{plane_id}` | 更新 Region 平面业务字段（不允许修改网络平面类型）/删除平面节点并级联删除子平面；需 Region 业务权限 |
 

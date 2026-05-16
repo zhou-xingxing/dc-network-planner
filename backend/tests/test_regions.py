@@ -1,5 +1,10 @@
 """Region CRUD tests."""
 
+from sqlalchemy.orm import Session
+
+from app.models.region_network_plane import RegionNetworkPlane
+from app.models.user import UserRegionPermission
+
 REGION_DATA = {"name": "北京数据中心", "description": "Production region"}
 
 
@@ -68,11 +73,51 @@ def test_update_region(client, admin_headers):
 
     resp = client.put(
         f"/api/regions/{region_id}",
-        json={"name": "北京数据中心-UPDATED"},
+        json={"name": "北京数据中心-UPDATED", "description": "更新后的描述"},
         headers=admin_headers,
     )
     assert resp.status_code == 200
-    assert resp.json()["name"] == "北京数据中心-UPDATED"
+    data = resp.json()
+    assert data["name"] == "北京数据中心-UPDATED"
+    assert data["description"] == "更新后的描述"
+
+
+def test_update_region_rejects_duplicate_name(client, admin_headers):
+    client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers)
+    region_b = client.post("/api/regions", json={"name": "Region-B"}, headers=admin_headers).json()
+
+    resp = client.put(
+        f"/api/regions/{region_b['id']}",
+        json={"name": "Region-A"},
+        headers=admin_headers,
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Region 名称已存在: Region-A"
+
+
+def test_update_region_returns_404(client, admin_headers):
+    resp = client.put(
+        "/api/regions/missing-region",
+        json={"name": "不存在"},
+        headers=admin_headers,
+    )
+
+    assert resp.status_code == 404
+
+
+def test_update_region_requires_administrator(client, admin_headers, user_headers_factory):
+    """Region 元数据更新只允许 administrator 执行。"""
+    region = client.post("/api/regions", json=REGION_DATA, headers=admin_headers).json()
+    user_headers = user_headers_factory([])
+
+    resp = client.put(
+        f"/api/regions/{region['id']}",
+        json={"name": "普通用户不可更新"},
+        headers=user_headers,
+    )
+
+    assert resp.status_code == 403
 
 
 def test_delete_region(client, admin_headers):
@@ -84,6 +129,45 @@ def test_delete_region(client, admin_headers):
 
     resp = client.get(f"/api/regions/{region_id}", headers=admin_headers)
     assert resp.status_code == 404
+
+
+def test_delete_region_cleans_user_region_permissions(client, admin_headers, user_headers_factory, test_db):
+    """删除 Region 时同步清理普通用户的 Region 授权。"""
+    region = client.post("/api/regions", json=REGION_DATA, headers=admin_headers).json()
+    user_headers_factory([region["id"]])
+
+    resp = client.delete(f"/api/regions/{region['id']}", headers=admin_headers)
+
+    assert resp.status_code == 204
+    session = Session(test_db)
+    try:
+        remaining_permissions = session.query(UserRegionPermission).filter_by(region_id=region["id"]).all()
+        assert remaining_permissions == []
+    finally:
+        session.close()
+
+
+def test_delete_region_cascades_region_planes(client, admin_headers, user_headers_factory, test_db):
+    """删除 Region 时通过 ORM 级联删除其下所有网络平面。"""
+    region = client.post("/api/regions", json=REGION_DATA, headers=admin_headers).json()
+    plane_type = client.post("/api/network-plane-types", json={"name": "管理平面"}, headers=admin_headers).json()
+    user_headers = user_headers_factory([region["id"]])
+    plane_response = client.post(
+        f"/api/regions/{region['id']}/planes",
+        json={"plane_type_id": plane_type["id"], "cidr": "10.0.0.0/24"},
+        headers=user_headers,
+    )
+    assert plane_response.status_code == 201
+
+    resp = client.delete(f"/api/regions/{region['id']}", headers=admin_headers)
+
+    assert resp.status_code == 204
+    session = Session(test_db)
+    try:
+        remaining_planes = session.query(RegionNetworkPlane).filter_by(region_id=region["id"]).all()
+        assert remaining_planes == []
+    finally:
+        session.close()
 
 
 def test_get_nonexistent_region(client, admin_headers):

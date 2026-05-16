@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Optional
 
 from sqlalchemy import func
@@ -14,14 +13,6 @@ from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeUpdate
 from app.services.change_log import log_change
 
 MAX_PLANE_TYPE_DEPTH = 2
-
-
-@dataclass(frozen=True)
-class PlaneTypeResponseContext:
-    """网络平面类型响应所需的聚合上下文。"""
-
-    parent_name: str | None
-    usage_count: int
 
 
 def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[NetworkPlaneType], int]:
@@ -40,45 +31,25 @@ def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list
     return items, total
 
 
-def get_plane_type_response_contexts(
+def get_plane_type_parent_names(
     db: Session,
     plane_type_ids: Sequence[str],
-) -> dict[str, PlaneTypeResponseContext]:
-    """批量查询网络平面类型响应所需的父级名称和使用次数。"""
+) -> dict[str, str | None]:
+    """批量查询网络平面类型响应所需的父级名称。"""
     if not plane_type_ids:
         return {}
 
     parent_type = aliased(NetworkPlaneType)
-    usage_counts = (
-        db.query(
-            RegionNetworkPlane.plane_type_id.label("plane_type_id"),
-            func.count(RegionNetworkPlane.id).label("usage_count"),
-        )
-        .filter(RegionNetworkPlane.plane_type_id.in_(plane_type_ids))
-        .group_by(RegionNetworkPlane.plane_type_id)
-        .subquery()
-    )
     rows = (
         db.query(
             NetworkPlaneType.id,
             parent_type.name,
-            func.coalesce(usage_counts.c.usage_count, 0),
         )
         .outerjoin(parent_type, NetworkPlaneType.parent_id == parent_type.id)
-        .outerjoin(usage_counts, NetworkPlaneType.id == usage_counts.c.plane_type_id)
         .filter(NetworkPlaneType.id.in_(plane_type_ids))
         .all()
     )
-    return {
-        plane_type_id: PlaneTypeResponseContext(parent_name=parent_name, usage_count=int(usage_count))
-        for plane_type_id, parent_name, usage_count in rows
-    }
-
-
-def get_plane_type_response_context(db: Session, plane_type_id: str) -> PlaneTypeResponseContext:
-    """查询单个网络平面类型响应所需的聚合上下文。"""
-    context = get_plane_type_response_contexts(db, [plane_type_id]).get(plane_type_id)
-    return context or PlaneTypeResponseContext(parent_name=None, usage_count=0)
+    return {plane_type_id: parent_name for plane_type_id, parent_name in rows}
 
 
 def get_plane_type(db: Session, pt_id: str) -> Optional[NetworkPlaneType]:
@@ -105,19 +76,6 @@ def get_plane_type_by_name(db: Session, name: str) -> Optional[NetworkPlaneType]
         NetworkPlaneType 对象，不存在时返回 None。
     """
     return db.query(NetworkPlaneType).filter(NetworkPlaneType.name == name).first()
-
-
-def count_usages_for_plane_type(db: Session, pt_id: str) -> int:
-    """统计指定网络平面类型的使用次数（Region + Scope 维度）。
-
-    Args:
-        db: 数据库会话。
-        pt_id: 平面类型 ID。
-
-    Returns:
-        RegionNetworkPlane 实例数量。
-    """
-    return db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.plane_type_id == pt_id).scalar() or 0
 
 
 def count_children_for_plane_type(db: Session, pt_id: str) -> int:
@@ -241,9 +199,8 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
     pt = get_plane_type(db, pt_id)
     if not pt:
         return False
-    usage_count = count_usages_for_plane_type(db, pt_id)
-    if usage_count > 0:
-        raise BusinessError(f"Cannot delete plane type in use by {usage_count} usage(s)")
+    if _has_region_plane_reference(db, pt_id):
+        raise BusinessError("Cannot delete plane type in use")
     child_count = count_children_for_plane_type(db, pt_id)
     if child_count > 0:
         raise BusinessError(f"Cannot delete plane type with {child_count} child type(s)")
@@ -258,6 +215,11 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
     db.delete(pt)
     db.flush()
     return True
+
+
+def _has_region_plane_reference(db: Session, plane_type_id: str) -> bool:
+    """判断网络平面类型是否已被 Region 启用。"""
+    return db.query(RegionNetworkPlane.id).filter(RegionNetworkPlane.plane_type_id == plane_type_id).first() is not None
 
 
 def _validate_parent_assignment(

@@ -44,11 +44,6 @@
         <el-table-column prop="vrf" label="所属 VRF" min-width="180">
           <template #default="{ row }">{{ row.vrf || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="usage_count" label="使用次数" width="120" align="center">
-          <template #default="{ row }">
-            <span>{{ row.usage_count }}</span>
-          </template>
-        </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
@@ -62,7 +57,7 @@
             </el-button>
             <el-popconfirm title="确定删除？如果该网络平面类型已被使用或包含子级则无法删除" @confirm="handleDelete(row.id)">
               <template #reference>
-                <el-button size="small" type="danger" link :disabled="row.usage_count > 0 || row.children?.length > 0">
+                <el-button size="small" type="danger" link :disabled="row.children?.length > 0">
                   <el-icon style="margin-right: 3px"><Delete /></el-icon>删除
                 </el-button>
               </template>

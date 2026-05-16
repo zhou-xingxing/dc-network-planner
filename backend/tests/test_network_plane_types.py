@@ -62,30 +62,20 @@ def test_list_plane_types_orders_by_name(client, admin_headers):
     assert names == ["A平面", "Z平面"]
 
 
-def test_list_plane_types_includes_parent_name_and_usage_count(client, admin_headers, user_headers_factory):
-    """网络平面类型列表批量返回父级名称和 Region 使用次数。"""
-    region = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
+def test_list_plane_types_includes_parent_name(client, admin_headers):
+    """网络平面类型列表返回父级名称。"""
     parent = client.post("/api/network-plane-types", json={"name": "父平面"}, headers=admin_headers).json()
     child = client.post(
         "/api/network-plane-types",
         json={"name": "子平面", "parent_id": parent["id"]},
         headers=admin_headers,
     ).json()
-    user_headers = user_headers_factory([region["id"]])
-    create_plane = client.post(
-        f"/api/regions/{region['id']}/planes",
-        json={"plane_type_id": parent["id"], "cidr": "10.0.0.0/24"},
-        headers=user_headers,
-    )
-    assert create_plane.status_code == 201
 
     response = client.get("/api/network-plane-types?skip=0&limit=10", headers=admin_headers)
 
     assert response.status_code == 200
     items = {item["id"]: item for item in response.json()["items"]}
-    assert items[parent["id"]]["usage_count"] == 1
     assert items[child["id"]]["parent_name"] == "父平面"
-    assert items[child["id"]]["usage_count"] == 0
 
 
 def test_create_plane_type_with_parent(client, admin_headers):

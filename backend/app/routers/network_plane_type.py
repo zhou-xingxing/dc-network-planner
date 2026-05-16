@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,12 +11,10 @@ from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, PlaneTypeUpdate
 from app.services.network_plane_type import (
-    PlaneTypeResponseContext,
     create_plane_type,
     delete_plane_type,
     get_plane_type,
-    get_plane_type_response_context,
-    get_plane_type_response_contexts,
+    get_plane_type_parent_names,
     list_plane_types,
     update_plane_type,
 )
@@ -39,10 +38,10 @@ def list_plane_types_endpoint(
 ) -> PaginatedResponse[PlaneTypeResponse]:
     """查询网络平面类型列表。"""
     items, total = list_plane_types(db, skip=skip, limit=limit)
-    contexts = get_plane_type_response_contexts(db, [pt.id for pt in items])
+    parent_names = get_plane_type_parent_names(db, [pt.id for pt in items])
     result = []
     for pt in items:
-        result.append(_plane_type_response(pt, contexts.get(pt.id, PlaneTypeResponseContext(None, 0))))
+        result.append(_plane_type_response(pt, parent_names))
     return PaginatedResponse(items=result, total=total, skip=skip, limit=limit)
 
 
@@ -57,7 +56,7 @@ def create_plane_type_endpoint(
         pt = create_plane_type(db, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return _plane_type_response(pt, get_plane_type_response_context(db, pt.id))
+    return _plane_type_response(pt, get_plane_type_parent_names(db, [pt.id]))
 
 
 @router.get("/{pt_id}", response_model=PlaneTypeResponse)
@@ -66,7 +65,7 @@ def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneT
     pt = get_plane_type(db, pt_id)
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
-    return _plane_type_response(pt, get_plane_type_response_context(db, pt.id))
+    return _plane_type_response(pt, get_plane_type_parent_names(db, [pt.id]))
 
 
 @router.put("/{pt_id}", response_model=PlaneTypeResponse)
@@ -83,10 +82,10 @@ def update_plane_type_endpoint(
         raise HTTPException(status_code=409, detail=str(e))
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
-    return _plane_type_response(pt, get_plane_type_response_context(db, pt.id))
+    return _plane_type_response(pt, get_plane_type_parent_names(db, [pt.id]))
 
 
-def _plane_type_response(pt: "NetworkPlaneType", context: PlaneTypeResponseContext) -> PlaneTypeResponse:
+def _plane_type_response(pt: "NetworkPlaneType", parent_names: Mapping[str, str | None]) -> PlaneTypeResponse:
     return PlaneTypeResponse(
         id=pt.id,
         name=pt.name,
@@ -94,8 +93,7 @@ def _plane_type_response(pt: "NetworkPlaneType", context: PlaneTypeResponseConte
         is_private=pt.is_private,
         vrf=pt.vrf,
         parent_id=pt.parent_id,
-        parent_name=context.parent_name,
-        usage_count=context.usage_count,
+        parent_name=parent_names.get(pt.id),
         created_at=format_datetime(pt.created_at),
         updated_at=format_datetime(pt.updated_at),
     )

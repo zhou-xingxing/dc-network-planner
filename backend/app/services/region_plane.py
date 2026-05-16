@@ -135,7 +135,7 @@ def enable_plane_for_region(
         .first()
     )
     if existing:
-        raise BusinessError(f"该网络平面类型已在 Region 的 {scope} 作用域中启用，不能重复创建")
+        raise BusinessError(f"该网络平面类型已在本Region 的 {scope} 作用域中启用，不能重复创建")
 
     gateway_ip_warning = _validate_plane_assignment(
         db,
@@ -241,7 +241,7 @@ def update_plane_for_region(
         .first()
     )
     if existing:
-        raise BusinessError(f"该网络平面类型已在 Region 的 {new_scope} 作用域中启用，不能重复创建")
+        raise BusinessError(f"该网络平面类型已在本Region 的 {new_scope} 作用域中启用，不能重复创建")
 
     gateway_ip_warning = _validate_plane_assignment(
         db,

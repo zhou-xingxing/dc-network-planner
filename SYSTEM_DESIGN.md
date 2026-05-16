@@ -396,7 +396,8 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 2. 若单 IP 解析失败，尝试解析为 CIDR（`parse_cidr`）
 3. 若两种解析均失败，直接返回 400，不执行网络平面查询
 4. IP 查询返回包含该 IP 的所有分配；CIDR 查询在 `exact=true` 时精确匹配，在 `exact=false` 时重叠匹配
-5. 在 Python 内存中使用 `ipaddress` 模块进行包含/重叠检测（SQLite 无原生 CIDR 类型）
+5. 响应按网络平面父子关系返回树形结果；如果命中的是子平面，会额外带出父级上下文节点，`total` 只统计真正命中的平面，节点用 `is_match` 区分命中项与上下文
+6. 在 Python 内存中使用 `ipaddress` 模块进行包含/重叠检测（SQLite 无原生 CIDR 类型）
 
 #### Excel 导入（两阶段）
 

@@ -38,14 +38,36 @@
           <el-tag size="small" effect="plain" type="info">共 {{ total }} 条匹配</el-tag>
         </div>
       </template>
-      <el-table :data="results" stripe border v-loading="searching" empty-text="未找到匹配的网络平面">
-        <el-table-column prop="cidr" label="IP地址段" width="160" />
-        <el-table-column prop="region_name" label="所属 Region" width="160" />
-        <el-table-column prop="plane_type_name" label="网络平面" width="120" />
+      <el-table
+        class="lookup-results-table"
+        :data="results"
+        row-key="id"
+        default-expand-all
+        :tree-props="{ children: 'children' }"
+        stripe
+        border
+        v-loading="searching"
+        empty-text="未找到匹配的网络平面"
+        table-layout="auto"
+        :fit="false"
+        scrollbar-always-on
+        show-overflow-tooltip
+      >
+        <el-table-column prop="cidr" label="CIDR" min-width="300">
+          <template #default="{ row }">
+            <span class="cidr-cell">
+              <span class="plane-address-text">{{ row.cidr }}</span>
+              <el-tag v-if="row.is_match" size="small" type="success" effect="plain">命中</el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">上下文</el-tag>
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="plane_type_name" label="网络平面" min-width="160" show-overflow-tooltip />
         <el-table-column prop="scope" label="作用域" width="110" />
         <el-table-column prop="vlan_id" label="VLAN ID" width="90" align="center" />
+        <el-table-column prop="gateway_ip" label="网关IP" width="140" show-overflow-tooltip />
         <el-table-column prop="gateway_position" label="网关位置" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="gateway_ip" label="网关IP" width="140" />
+        <el-table-column prop="region_name" label="所属 Region" width="160" show-overflow-tooltip />
       </el-table>
     </el-card>
 
@@ -109,6 +131,29 @@ async function handleSearch() {
   width: 3px;
   background: var(--color-primary);
   border-radius: 2px;
+}
+.cidr-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.plane-address-text {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.cidr-cell :deep(.el-tag) {
+  flex: 0 0 auto;
+}
+.lookup-results-table :deep(.cell) {
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 .search-hint { margin-top: 40px; }
 </style>

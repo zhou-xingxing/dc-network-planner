@@ -11,13 +11,10 @@ from app.dependencies import (
     operator_name,
 )
 from app.exceptions import BusinessError
-from app.models.network_plane_type import NetworkPlaneType
-from app.models.region import Region
-from app.models.region_network_plane import RegionNetworkPlane
 from app.models.user import User
 from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
 from app.services import excel as excel_service
-from app.utils.excel_utils import build_export, generate_template
+from app.utils.excel_utils import generate_template
 
 router = APIRouter(prefix="/api/excel", tags=["Excel"], dependencies=[Depends(get_current_user)])
 
@@ -85,38 +82,7 @@ def export_excel(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """导出 Region 网络平面数据到 Excel。"""
-    query = (
-        db.query(RegionNetworkPlane)
-        .join(Region, RegionNetworkPlane.region_id == Region.id)
-        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
-    )
-    if region_id:
-        query = query.filter(RegionNetworkPlane.region_id == region_id)
-    if plane_type_id:
-        query = query.filter(RegionNetworkPlane.plane_type_id == plane_type_id)
-
-    planes = query.order_by(
-        Region.name.asc(),
-        NetworkPlaneType.name.asc(),
-        RegionNetworkPlane.scope.asc(),
-        RegionNetworkPlane.cidr.asc(),
-    ).all()
-
-    data = []
-    for plane in planes:
-        data.append(
-            {
-                "region_name": plane.region.name if plane.region else "",
-                "plane_type_name": plane.plane_type.name if plane.plane_type else "",
-                "scope": plane.scope,
-                "ip_range": plane.cidr or "",
-                "vlan_id": plane.vlan_id,
-                "gateway_position": plane.gateway_position or "",
-                "gateway_ip": plane.gateway_ip or "",
-            }
-        )
-
-    buf = build_export(data)
+    buf = excel_service.export_region_planes(db, region_id=region_id, plane_type_id=plane_type_id)
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

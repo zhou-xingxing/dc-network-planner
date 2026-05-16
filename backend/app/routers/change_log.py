@@ -1,14 +1,13 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.change_log import ChangeLog
 from app.schemas.change_log import ChangeLogResponse
 from app.schemas.common import PaginatedResponse
+from app.services.change_log import list_change_logs as list_change_logs_service
 from app.utils.time_utils import format_datetime
 
 router = APIRouter(prefix="/api/change-logs", tags=["Change Logs"], dependencies=[Depends(get_current_user)])
@@ -27,23 +26,17 @@ def list_change_logs(
     db: Session = Depends(get_db),
 ) -> PaginatedResponse[ChangeLogResponse]:
     """查询变更日志列表，支持按实体、操作、时间筛选。"""
-    query = db.query(ChangeLog)
-
-    if entity_type:
-        query = query.filter(ChangeLog.entity_type == entity_type)
-    if entity_id:
-        query = query.filter(ChangeLog.entity_id == entity_id)
-    if action:
-        query = query.filter(ChangeLog.action == action)
-    if operator:
-        query = query.filter(ChangeLog.operator.ilike(f"%{operator}%"))
-    if date_from:
-        query = query.filter(ChangeLog.created_at >= date_from)
-    if date_to:
-        query = query.filter(ChangeLog.created_at <= date_to)
-
-    total = query.count()
-    items = query.order_by(desc(ChangeLog.created_at)).offset(skip).limit(limit).all()
+    items, total = list_change_logs_service(
+        db,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        operator=operator,
+        date_from=date_from,
+        date_to=date_to,
+        skip=skip,
+        limit=limit,
+    )
     return PaginatedResponse(
         items=[
             ChangeLogResponse(

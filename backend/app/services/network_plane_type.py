@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Optional
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
@@ -12,6 +14,14 @@ from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeUpdate
 from app.services.change_log import log_change
 
 MAX_PLANE_TYPE_DEPTH = 2
+
+
+@dataclass(frozen=True)
+class PlaneTypeResponseContext:
+    """网络平面类型响应所需的聚合上下文。"""
+
+    parent_name: str | None
+    usage_count: int
 
 
 def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[NetworkPlaneType], int]:
@@ -28,6 +38,47 @@ def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list
     total = db.query(NetworkPlaneType).count()
     items = db.query(NetworkPlaneType).order_by(NetworkPlaneType.name.asc()).offset(skip).limit(limit).all()
     return items, total
+
+
+def get_plane_type_response_contexts(
+    db: Session,
+    plane_type_ids: Sequence[str],
+) -> dict[str, PlaneTypeResponseContext]:
+    """批量查询网络平面类型响应所需的父级名称和使用次数。"""
+    if not plane_type_ids:
+        return {}
+
+    parent_type = aliased(NetworkPlaneType)
+    usage_counts = (
+        db.query(
+            RegionNetworkPlane.plane_type_id.label("plane_type_id"),
+            func.count(RegionNetworkPlane.id).label("usage_count"),
+        )
+        .filter(RegionNetworkPlane.plane_type_id.in_(plane_type_ids))
+        .group_by(RegionNetworkPlane.plane_type_id)
+        .subquery()
+    )
+    rows = (
+        db.query(
+            NetworkPlaneType.id,
+            parent_type.name,
+            func.coalesce(usage_counts.c.usage_count, 0),
+        )
+        .outerjoin(parent_type, NetworkPlaneType.parent_id == parent_type.id)
+        .outerjoin(usage_counts, NetworkPlaneType.id == usage_counts.c.plane_type_id)
+        .filter(NetworkPlaneType.id.in_(plane_type_ids))
+        .all()
+    )
+    return {
+        plane_type_id: PlaneTypeResponseContext(parent_name=parent_name, usage_count=int(usage_count))
+        for plane_type_id, parent_name, usage_count in rows
+    }
+
+
+def get_plane_type_response_context(db: Session, plane_type_id: str) -> PlaneTypeResponseContext:
+    """查询单个网络平面类型响应所需的聚合上下文。"""
+    context = get_plane_type_response_contexts(db, [plane_type_id]).get(plane_type_id)
+    return context or PlaneTypeResponseContext(parent_name=None, usage_count=0)
 
 
 def get_plane_type(db: Session, pt_id: str) -> Optional[NetworkPlaneType]:

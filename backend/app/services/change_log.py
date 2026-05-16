@@ -2,9 +2,43 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.models.change_log import ChangeLog
+
+
+def list_change_logs(
+    db: Session,
+    *,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    action: str | None = None,
+    operator: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    skip: int = 0,
+    limit: int = 50,
+) -> tuple[list[ChangeLog], int]:
+    """查询变更日志列表，支持按实体、操作、时间筛选。"""
+    query = db.query(ChangeLog)
+
+    if entity_type:
+        query = query.filter(ChangeLog.entity_type == entity_type)
+    if entity_id:
+        query = query.filter(ChangeLog.entity_id == entity_id)
+    if action:
+        query = query.filter(ChangeLog.action == action)
+    if operator:
+        query = query.filter(ChangeLog.operator.ilike(f"%{operator}%"))
+    if date_from:
+        query = query.filter(ChangeLog.created_at >= date_from)
+    if date_to:
+        query = query.filter(ChangeLog.created_at <= date_to)
+
+    total = query.count()
+    items = query.order_by(desc(ChangeLog.created_at)).offset(skip).limit(limit).all()
+    return items, total
 
 
 def log_change(

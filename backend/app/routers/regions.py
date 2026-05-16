@@ -170,6 +170,7 @@ def enable_plane_endpoint(
             vlan_id=data.vlan_id,
             gateway_position=data.gateway_position,
             gateway_ip=data.gateway_ip,
+            region_name=region.name,
         )
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))

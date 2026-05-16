@@ -98,6 +98,7 @@ def enable_plane_for_region(
     vlan_id: int | None = None,
     gateway_position: str | None = None,
     gateway_ip: str | None = None,
+    region_name: str | None = None,
 ) -> tuple[RegionNetworkPlane, str | None]:
     """为 Region 启用一个网络平面类型。
 
@@ -111,6 +112,7 @@ def enable_plane_for_region(
         vlan_id: VLAN ID，可选。
         gateway_position: 网关位置，可选。
         gateway_ip: 网关 IP 地址，可选。
+        region_name: Region 名称，供审计日志展示使用。
 
     Returns:
         新创建的 RegionNetworkPlane 对象和可选弱校验提示。
@@ -168,7 +170,7 @@ def enable_plane_for_region(
         action="create",
         operator=operator,
         new_value=(
-            f"region={region_id}, plane_type={pt.name}, cidr={cidr}, "
+            f"region={region_name or '未知Region'}, plane_type={pt.name}, cidr={cidr}, "
             f"scope={scope}, vlan_id={vlan_id or ''}, "
             f"gateway_position={gateway_position or ''}, gateway_ip={gateway_ip or ''}"
         ),
@@ -326,18 +328,20 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
             entity_id=child_id,
             action="delete",
             operator=operator,
-            old_value=f"由父平面 {plane_id} 删除级联触发, cidr={cp.cidr if cp else ''}",
+            old_value=(
+                f"由父平面 {_format_plane_ref(plane)} 删除级联触发, "
+                f"子平面={_format_plane_ref(cp) if cp else '未知平面'}"
+            ),
         )
 
     # 审计日志：记录本平面删除
-    pt_name = plane.plane_type.name if plane.plane_type else "unknown"
     log_change(
         db,
         entity_type="region_network_plane",
         entity_id=plane_id,
         action="delete",
         operator=operator,
-        old_value=f"region={region_id}, plane_type={pt_name}, scope={plane.scope}, cidr={plane.cidr}",
+        old_value=_format_plane_ref(plane),
     )
 
     for child_id in reversed(descendant_ids):
@@ -639,8 +643,8 @@ def _format_plane_refs(planes: list[RegionNetworkPlane]) -> str:
 
 
 def _format_plane_ref(plane: RegionNetworkPlane) -> str:
-    region_name = plane.region.name if plane.region else plane.region_id
-    plane_type_name = plane.plane_type.name if plane.plane_type else plane.plane_type_id
+    region_name = plane.region.name if plane.region else "未知Region"
+    plane_type_name = plane.plane_type.name if plane.plane_type else "未知网络平面"
     vlan_text = f", VLAN={plane.vlan_id}" if plane.vlan_id is not None else ""
     return f"Region={region_name}, 网络平面={plane_type_name}, 作用域={plane.scope}, CIDR={plane.cidr}{vlan_text}"
 

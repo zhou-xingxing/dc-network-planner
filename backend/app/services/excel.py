@@ -182,6 +182,7 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
                 vlan_id=row["vlan_id"],
                 gateway_position=row.get("gateway_position"),
                 gateway_ip=row.get("gateway_ip"),
+                region_name=row["region_name"],
             )
             imported += 1
         except Exception as e:

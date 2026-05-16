@@ -276,7 +276,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | comment | Text | NULLABLE | 备注 |
 | created_at | DateTime | NOT NULL, INDEX | 创建时间 |
 
-**设计决策**：显式服务层变更日志记录，而非 SQLAlchemy 事件监听。Service 在每次 mutate 操作后调用 `log_change()`，更可控、可测试。
+**设计决策**：显式服务层变更日志记录，而非 SQLAlchemy 事件监听。Service 在每次 mutate 操作后调用 `log_change()`，更可控、可测试。`entity_id` 保留 UUID 作为内部关联和筛选键；面向用户展示的 `old_value`、`new_value`、`comment` 必须优先记录 Region 名称、网络平面类型名称、作用域、CIDR 等可读业务描述，不直接暴露外键 UUID。
 
 #### backup_configs
 
@@ -523,11 +523,13 @@ GET /api/backup/records
 
 **理由**：事件监听器需要额外的 `session.info` 传递操作者上下文，且隐含行为难以调试。Service 层方式是显式的、可单元测试的。
 
+**展示约束**：变更日志表中的 `entity_id` 只用于内部定位；写入 `old_value`、`new_value`、`comment` 时应把 Region、父级网络平面类型、Region 网络平面实例等外键转成用户可识别的名称或业务描述。
+
 ### 6.5 UUID 主键
 
 **决策**：所有表使用 UUID v4 主键，存储为 `String(36)`。
 
-**理由**：UUID 防止 ID 枚举攻击，便于未来数据迁移/合并（分布式无冲突）。字符串格式在 API 响应和日志中可读性好。
+**理由**：UUID 防止 ID 枚举攻击，便于未来数据迁移/合并（分布式无冲突）。UUID 适合作为内部主键和 API 关联键，但不适合作为面向普通用户的变更历史描述；用户可见日志应展示业务名称和上下文。
 
 ### 6.6 两阶段 Excel 导入
 

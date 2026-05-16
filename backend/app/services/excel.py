@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.exceptions import BusinessError
 from app.services.region_plane import enable_plane_for_region, normalize_plane_scope
 from app.utils.excel_utils import parse_excel
 from app.utils.ip_utils import parse_cidr, parse_ip
@@ -15,7 +17,7 @@ from app.utils.time_utils import utcnow
 # In-memory import preview cache
 _import_cache: dict[str, dict[str, Any]] = {}
 _import_cache_lock = Lock()
-_IMPORT_TTL = timedelta(minutes=30)
+_IMPORT_TTL = timedelta(minutes=settings.IMPORT_TTL_MINUTES)
 
 
 def store_preview(rows: list[dict[str, Any]]) -> str:
@@ -80,7 +82,10 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
     from app.models.network_plane_type import NetworkPlaneType
     from app.models.region import Region
 
-    parsed_rows = parse_excel(file_bytes)
+    try:
+        parsed_rows = parse_excel(file_bytes)
+    except ValueError as exc:
+        raise BusinessError(str(exc)) from exc
     valid_rows = []
     error_rows = []
 
@@ -106,6 +111,8 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
 
         if row["vlan_id"] is not None and not 1 <= row["vlan_id"] <= 4094:
             row_errors.append(f"无效 VLAN ID: {row['vlan_id']}")
+        if row.get("vlan_id_error"):
+            row_errors.append(f"无效 VLAN ID: {row['vlan_id_error']}")
         if row["gateway_ip"] and not parse_ip(row["gateway_ip"]):
             row_errors.append(f"无效网关IP: {row['gateway_ip']}")
 
@@ -139,7 +146,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
                 "gateway_position": r["gateway_position"],
                 "gateway_ip": r["gateway_ip"],
             }
-            for r in parsed_rows
+            for r in valid_rows
         ],
     }
 
@@ -159,7 +166,7 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
         包含 success、imported_count、error_count、errors 的导入结果字典。
     """
     rows = get_preview(preview_id)
-    if not rows:
+    if rows is None:
         return {
             "success": False,
             "imported_count": 0,
@@ -185,7 +192,7 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
                 region_name=row["region_name"],
             )
             imported += 1
-        except Exception as e:
+        except BusinessError as e:
             errors.append({"row": row["row_number"], "errors": [str(e)]})
 
     return {

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import io
 from typing import Any, Optional
+from zipfile import BadZipFile
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.exceptions import InvalidFileException
 
 TEMPLATE_HEADERS = [
     "区域名称",
@@ -66,7 +68,10 @@ def parse_excel(file_bytes: bytes) -> list[dict[str, Any]]:
         解析后的行数据列表，每行包含 region_name、plane_type_name、
         scope、ip_range、vlan_id、gateway_position、gateway_ip 等字段。
     """
-    wb = load_workbook(io.BytesIO(file_bytes), read_only=True)
+    try:
+        wb = load_workbook(io.BytesIO(file_bytes), read_only=True)
+    except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
+        raise ValueError("Excel 文件无法解析，请确认文件为有效的 .xlsx 工作簿") from exc
     ws = wb.active
     rows = []
     header_values = [str(cell.value or "").strip() for cell in ws[1]]
@@ -79,6 +84,7 @@ def parse_excel(file_bytes: bytes) -> list[dict[str, Any]]:
         vlan_id_index = 4 if has_scope_column else 3
         gateway_position_index = 5 if has_scope_column else 4
         gateway_ip_index = 6 if has_scope_column else 5
+        vlan_id, vlan_error = _parse_optional_int(row[vlan_id_index] if len(row) > vlan_id_index else None)
         rows.append(
             {
                 "row_number": row_idx,
@@ -86,7 +92,8 @@ def parse_excel(file_bytes: bytes) -> list[dict[str, Any]]:
                 "plane_type_name": str(row[1] or "").strip(),
                 "scope": scope,
                 "ip_range": str(row[ip_range_index] or "").strip(),
-                "vlan_id": _parse_int(row[vlan_id_index] if len(row) > vlan_id_index else None),
+                "vlan_id": vlan_id,
+                "vlan_id_error": vlan_error,
                 "gateway_position": (
                     str(row[gateway_position_index] or "").strip() if len(row) > gateway_position_index else ""
                 )
@@ -98,13 +105,18 @@ def parse_excel(file_bytes: bytes) -> list[dict[str, Any]]:
     return rows
 
 
-def _parse_int(v: Any) -> Optional[int]:
+def _parse_optional_int(v: Any) -> tuple[Optional[int], str | None]:
     if v is None:
-        return None
+        return None, None
+    raw_value = str(v).strip()
+    if raw_value == "":
+        return None, None
+    if isinstance(v, float) and not v.is_integer():
+        return None, raw_value
     try:
-        return int(v)
+        return int(v), None
     except (ValueError, TypeError):
-        return None
+        return None, raw_value
 
 
 def build_export(data: list[dict[str, Any]]) -> io.BytesIO:

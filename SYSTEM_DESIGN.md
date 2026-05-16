@@ -403,13 +403,13 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 
 ```
 第一阶段: POST /api/excel/import/preview
-  → 上传 Excel → 解析验证 → 返回预览数据 + preview_id
+  → 上传 .xlsx Excel → 解析验证 → 返回有效行预览数据 + preview_id
   → 预览数据在内存缓存 30 分钟
 
 第二阶段: POST /api/excel/import/confirm
   → 传入 preview_id，后端使用当前登录用户作为操作者
   → 检查预览数据涉及的所有 Region 是否都允许当前用户写入
-  → 逐行启用 Region 网络平面，逐行检查 CIDR 重叠并收集错误
+  → 逐行启用 Region 网络平面，逐行检查 CIDR 重叠并收集业务错误
   → 逐条记录变更日志
 ```
 
@@ -536,6 +536,8 @@ GET /api/backup/records
 **决策**：预览（解析验证）→ 确认（批量写入）两阶段。
 
 **理由**：预览步骤让用户在提交前检查解析结果和验证错误。确认时只需传入 preview_id，避免大数据量重新传输。预览缓存 30 分钟防止内存无限增长。
+
+**边界**：当前导入解析仅支持 `.xlsx` 工作簿；预览响应中的 `rows` 只包含可确认导入的有效行，错误行通过 `error_rows` 返回。确认阶段只把可预期的业务错误按行收集，数据库或运行时异常交由请求事务统一回滚。
 
 ### 6.7 前端本地状态管理
 
@@ -671,6 +673,7 @@ Docker 部署可直接通过容器环境变量覆盖配置。
 
 | 配置项 | 默认值 | 说明 |
 |---|---:|---|
+| `IMPORT_TTL_MINUTES` | `30` | Excel 导入预览数据在内存缓存中的保留时长，超时后确认导入会要求重新上传 |
 | `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | `false` | 是否允许 CIDR 跨 Region 重叠；Region 内父子/非父子重叠规则不变 |
 | `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | `true` | 是否允许 VLAN ID 跨 Region 重复；同一 Region 内始终不能重复 |
 

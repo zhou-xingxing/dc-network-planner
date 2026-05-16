@@ -290,6 +290,7 @@ cp -n .env.example .env
 |---|---|
 | `DATABASE_URL` | SQLAlchemy 数据库连接地址，本地默认使用 `backend/dc_network_planner.db` |
 | `APP_TIMEZONE` | 应用业务时区，用于解释定时备份 cron 等业务时间 |
+| `IMPORT_TTL_MINUTES` | Excel 导入预览数据在内存缓存中的保留时长，超时后需重新上传 |
 | `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须改成高强度随机值 |
 | `BOOTSTRAP_ADMIN_USERNAME` | 初始管理员用户名，仅在 `users` 表为空时自动创建 |
 | `BOOTSTRAP_ADMIN_PASSWORD` | 初始管理员密码，仅在 `users` 表为空时自动创建 |
@@ -397,11 +398,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 67 | 4,846 |
-| 后端测试 | 16 | 2,331 |
+| 后端代码 | 67 | 4,869 |
+| 后端测试 | 16 | 2,424 |
 | 前端代码 | 30 | 3,846 |
 | 前端测试 | 0 | 0 |
-| 合计 | 113 | 11,023 |
+| 合计 | 113 | 11,139 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

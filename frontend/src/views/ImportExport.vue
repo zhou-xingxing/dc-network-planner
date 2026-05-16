@@ -10,7 +10,7 @@
     <el-card shadow="never">
       <el-tabs v-model="activeTab" class="app-tabs">
         <el-tab-pane label="导入 Excel" name="import">
-          <!-- Step 1: Download Template -->
+          <!-- 步骤 1：下载模板 -->
           <div class="step-section">
             <div class="step-label">
               <el-tag size="small" type="primary" round>步骤 1</el-tag>
@@ -24,7 +24,7 @@
 
           <el-divider />
 
-          <!-- Step 2: Upload -->
+          <!-- 步骤 2：上传文件 -->
           <div class="step-section">
             <div class="step-label">
               <el-tag size="small" type="primary" round>步骤 2</el-tag>
@@ -37,7 +37,7 @@
               :auto-upload="false"
               :show-file-list="true"
               :limit="1"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
               :on-change="onFileChange"
               class="upload-area"
             >
@@ -50,12 +50,12 @@
                 预览
               </el-button>
               <template #tip>
-                <div class="upload-tip">仅支持 .xlsx / .xls 文件</div>
+                <div class="upload-tip">仅支持 .xlsx 文件</div>
               </template>
             </el-upload>
           </div>
 
-          <!-- Preview -->
+          <!-- 预览结果 -->
           <div v-if="previewData" class="step-section">
             <div class="step-label">
               <el-tag size="small" type="primary" round>步骤 3</el-tag>
@@ -103,7 +103,7 @@
             </el-button>
           </div>
 
-          <!-- Import Result -->
+          <!-- 导入结果 -->
           <el-result v-if="importResult" icon="success" :title="`导入完成`" :sub-title="`成功 ${importResult.imported_count} 条，失败 ${importResult.error_count} 条`">
             <template #extra>
               <el-button type="primary" @click="resetImport">继续导入</el-button>

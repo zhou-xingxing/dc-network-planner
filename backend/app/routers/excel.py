@@ -10,6 +10,7 @@ from app.dependencies import (
     get_current_user,
     operator_name,
 )
+from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
@@ -38,11 +39,14 @@ async def preview_import(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """上传 Excel 文件并预览导入结果。"""
-    if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(status_code=400, detail="仅支持 .xlsx / .xls 文件")
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="仅支持 .xlsx 文件")
 
     contents = await file.read()
-    result = excel_service.preview_import(contents, db)
+    try:
+        result = excel_service.preview_import(contents, db)
+    except BusinessError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return result
 
 

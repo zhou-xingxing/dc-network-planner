@@ -452,9 +452,66 @@ GET /api/backup/records
 | 资源冲突（重复名称/重叠 CIDR） | 409 |
 | 服务器内部错误 | 500 |
 
-Service 层使用 `ResourceNotFoundError` 表达明确的实体不存在场景，Router 层转换为 404；使用 `BusinessError` 表达业务规则冲突，Router 层转换为 409。
+Service 层使用 `ResourceNotFoundError` 表达明确的实体不存在场景，使用 `BusinessError` 表达业务规则冲突。Router 层负责 HTTP 语义转换，因为不同接口最清楚同一类业务错误应返回 400、403、404、409 还是其他状态码；全局异常处理器只作为兜底，处理未被 Router 转换的 `BusinessError` / `ResourceNotFoundError`，记录 `HTTPException` 日志，并把漏网的未预期异常转换为统一 500 响应，避免异常直接变成无结构响应。
 
-### 5.4 认证与权限
+### 5.4 系统日志
+
+系统日志与业务变更日志分离：`change_logs` 只记录用户可追溯的数据变更；系统日志用于排查 HTTP 请求、后台任务和未预期异常，不落数据库，也不提供查询 API 或前端页面。当前阶段通过文件搜索完成排障。
+
+后端启动时由 `app.logging_config.setup_logging()` 统一初始化 root logger，写入控制台和轮转文件。文件日志固定写入 JSON Lines，默认路径为 `backend/logs/app.log`，便于 `rg`、`jq` 或后续日志采集系统处理。`backend/logs/` 不提交到仓库。
+
+HTTP 请求由全局中间件生成或透传 `X-Request-ID`，并在响应头返回同一个值；缺失、空值或超过 128 字符的 request ID 会被替换为后端生成的 UUID。请求日志记录 `request_id`、`method`、`path`、`status_code`、`duration_ms`、`client_ip`、`username` 和查询参数；文件日志每行都会记录 `source_file`、`source_line`、`source_func`，用于定位日志产生位置。请求体不记录，避免密码、token、对象存储密钥等敏感信息进入日志。日志格式化阶段会递归脱敏 `password`、`token`、`authorization`、`secret`、`secret_key`、`access_key`、`jwt`、`cookie` 等结构化字段，并对 message、异常文本中的常见 `key=value` / `key: value` 凭据片段做兜底脱敏。`/api/health` 健康检查不写访问日志，避免 Docker healthcheck 噪声。
+
+日志记录边界保持分层：HTTP 访问摘要由中间件统一记录，异常响应由全局异常处理器统一记录；普通 CRUD 成功路径不额外手写系统日志，避免与访问日志和业务变更日志重复。Service 或后台任务只在中间件无法覆盖的关键副作用和故障点手动记录系统日志，例如备份执行失败、对象存储探测清理失败、备份调度循环异常等。命令行入口（如 seed 脚本）可记录执行进度日志，方便非 HTTP 场景排查。
+
+请求异常日志链路：
+
+```mermaid
+flowchart TD
+    A[HTTP 请求进入 request_logging_middleware] --> B[Router / Dependency / Service]
+
+    B -->|正常返回 2xx/3xx Response| C[中间件拿到 Response]
+    C --> C1[记录 app.access INFO]
+
+    B -->|产生 4xx HTTPException<br/>包括 Router 转换业务异常或直接抛出| D[wrapped_http_exception_handler]
+    D -->|4xx 不记录 app.exceptions| E[FastAPI 默认 http_exception_handler 生成 4xx Response]
+    E --> E1[中间件记录 app.access WARNING]
+
+    B -->|5xx HTTPException| F[wrapped_http_exception_handler 记录 app.exceptions ERROR 和堆栈]
+    F --> G[FastAPI 默认 http_exception_handler 生成 5xx Response]
+    G --> G1[中间件记录 app.access ERROR]
+
+    B -->|BusinessError 未被 Router 转换| H[business_error_handler<br/>记录 app.exceptions WARNING<br/>未被 Router 转换的 BusinessError]
+    H --> I[返回 409 Response]
+    I --> I1[中间件记录 app.access WARNING]
+
+    B -->|ResourceNotFoundError 未被 Router 转换| J[resource_not_found_handler<br/>记录 app.exceptions WARNING<br/>未被 Router 转换的 ResourceNotFoundError]
+    J --> K[返回 404 Response]
+    K --> K1[中间件记录 app.access WARNING]
+
+    B -->|未预期 Exception<br/>正常请求主路径| L[中间件 except 捕获并调用 log_unexpected_error]
+    L --> M[记录 app.exceptions ERROR 和堆栈]
+    M --> N[internal_error_response 生成统一 500 Response]
+    N --> N1[中间件记录 app.access ERROR]
+
+    B -.->|未被中间件捕获的 Exception<br/>第二道防线| O[unexpected_error_handler]
+    O --> P[复用 log_unexpected_error 记录 app.exceptions ERROR 和堆栈]
+    P --> Q[复用 internal_error_response 生成统一 500 Response]
+```
+
+异常分级策略：
+
+| 场景 | `app.access` | `app.exceptions` | 打印堆栈 |
+|---|---|---|---|
+| 正常请求（2xx/3xx） | INFO | 不记录 | 否 |
+| Router / 依赖产生的 4xx `HTTPException` | WARNING | 不记录 | 否 |
+| 漏网 `BusinessError` / `ResourceNotFoundError` | WARNING | WARNING | 否 |
+| 5xx `HTTPException` | ERROR | ERROR | 是 |
+| 未预期 `Exception` | ERROR | ERROR | 是 |
+
+后台任务（如备份调度）复用同一日志体系；非 HTTP 入口没有 `request_id` 时，对应字段为空，仍通过 logger 名称和消息定位来源。Docker Compose 部署会将 `LOG_DIR` 设置为 `/app/data/logs`，日志随数据库一起保存在持久化 volume 中；其他部署方式可通过环境变量覆盖日志目录。
+
+### 5.5 认证与权限
 
 除 `/api/health` 和 `/api/auth/login` 外，业务 API 均要求 `Authorization: Bearer <token>`。后端通过统一依赖解析当前用户，并在 Router 层做角色和 Region 授权校验。
 
@@ -474,7 +531,7 @@ Service 层使用 `ResourceNotFoundError` 表达明确的实体不存在场景�
 7. 变更日志的 `operator` 统一使用当前登录用户 `username`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
-### 5.5 启动初始化
+### 5.6 启动初始化
 
 应用启动时执行 `ensure_bootstrap_admin()`：当 `users` 表为空时，根据配置创建第一个 `administrator`。相关配置：
 
@@ -678,6 +735,11 @@ Docker 部署可直接通过容器环境变量覆盖配置。
 | 配置项 | 默认值 | 说明 |
 |---|---:|---|
 | `IMPORT_TTL_MINUTES` | `30` | Excel 导入预览数据在内存缓存中的保留时长，超时后确认导入会要求重新上传 |
+| `LOG_LEVEL` | `INFO` | 系统日志级别 |
+| `LOG_DIR` | `logs` | 系统日志目录；相对路径固定到 `backend/` 下 |
+| `LOG_FILE_NAME` | `app.log` | 系统日志主文件名 |
+| `LOG_MAX_BYTES` | `10485760` | 单个日志文件最大字节数，超出后轮转 |
+| `LOG_BACKUP_COUNT` | `10` | 轮转日志保留文件数 |
 | `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | `false` | 是否允许 CIDR 跨 Region 重叠；Region 内父子/非父子重叠规则不变 |
 | `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | `true` | 是否允许 VLAN ID 跨 Region 重复；同一 Region 内始终不能重复 |
 
@@ -723,11 +785,12 @@ services:
     ports: ["8000:8000"]
     environment:
       - DATABASE_URL=sqlite:////app/data/dc_network_planner.db
+      - LOG_DIR=/app/data/logs
       - JWT_SECRET_KEY=please-change-me
       - BOOTSTRAP_ADMIN_USERNAME=admin
       - BOOTSTRAP_ADMIN_PASSWORD=please-change-me
     volumes:
-      - dc-network-planner-data:/app/data    # 数据库持久化
+      - dc-network-planner-data:/app/data    # 数据库和系统日志持久化
     healthcheck:
       test: curl http://localhost:8000/api/health
 

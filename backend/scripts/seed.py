@@ -7,10 +7,11 @@ import logging
 from collections.abc import Mapping
 
 from app.database import Base, SessionLocal, engine
+from app.logging_config import setup_logging
 from app.models import NetworkPlaneType, Region, RegionNetworkPlane
 from app.utils.ip_utils import IPNetwork, check_overlap, parse_cidr
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+setup_logging()
 logger = logging.getLogger(__name__)
 
 PlaneConfig = tuple[str, int, str, str]

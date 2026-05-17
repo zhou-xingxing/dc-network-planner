@@ -34,6 +34,7 @@ COPY --from=builder /app/alembic /app/alembic
 
 # Default database path (can be overridden by env var)
 ENV DATABASE_URL=sqlite:////app/data/dc_network_planner.db
+ENV LOG_DIR=/app/data/logs
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

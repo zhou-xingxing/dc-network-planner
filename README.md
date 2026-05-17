@@ -300,10 +300,24 @@ cp -n .env.example .env
 | `BOOTSTRAP_ADMIN_PASSWORD` | 初始管理员密码，仅在 `users` 表为空时自动创建 |
 | `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录 |
 | `BACKUP_SCHEDULER_INTERVAL_SECONDS` | 后台备份调度扫描周期 |
+| `LOG_LEVEL` | 系统日志级别，默认 `INFO` |
+| `LOG_DIR` | 系统日志目录；相对路径固定到 `backend/` 下，默认 `backend/logs` |
+| `LOG_FILE_NAME` | 系统日志主文件名，默认 `app.log` |
+| `LOG_MAX_BYTES` | 单个日志文件最大字节数，超出后轮转 |
+| `LOG_BACKUP_COUNT` | 轮转日志保留文件数 |
 | `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | 是否允许 CIDR 跨 Region 重叠；启动后不应变更 |
 | `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | 是否允许 VLAN 跨 Region 重复；启动后不应变更 |
 
 Docker 部署时也可以通过环境变量覆盖这些配置；Compose 默认将后端数据库写入持久化 volume。
+
+系统运行日志默认以 JSON Lines 写入 `backend/logs/app.log`，按大小轮转。HTTP 响应会返回 `X-Request-ID`，排障时可用文件搜索定位同一次调用链：
+
+```bash
+tail -f backend/logs/app.log
+rg "request-id-from-response" backend/logs/
+```
+
+Docker Compose 部署时后端会把 `LOG_DIR` 设置为 `/app/data/logs`，日志随数据库一起保存在持久化 volume 中。
 
 ## 运行测试 & 代码检查
 
@@ -402,11 +416,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 70 | 4,964 |
-| 后端测试 | 17 | 2,485 |
-| 前端代码 | 30 | 3,853 |
+| 后端代码 | 76 | 5,343 |
+| 后端测试 | 18 | 2,808 |
+| 前端代码 | 30 | 3,857 |
 | 前端测试 | 0 | 0 |
-| 合计 | 117 | 11,302 |
+| 合计 | 124 | 12,008 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

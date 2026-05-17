@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     BACKUP_DEFAULT_LOCAL_PATH: str = "./backups"  # 本地备份文件默认存放目录
     BACKUP_SCHEDULER_INTERVAL_SECONDS: int = 60  # 备份调度器扫描周期（秒）
 
+    # --- 系统日志 ---
+    LOG_LEVEL: str = "INFO"  # 系统日志级别
+    LOG_DIR: str = "logs"  # 系统日志目录；相对路径固定到 backend 目录下
+    LOG_FILE_NAME: str = "app.log"  # 系统日志主文件名
+    LOG_MAX_BYTES: int = 10 * 1024 * 1024  # 单个日志文件最大字节数
+    LOG_BACKUP_COUNT: int = 10  # 轮转日志保留文件数
+
     # --- 网络地址重叠检测策略（启动后不应变更） ---
     ALLOW_CIDR_OVERLAP_ACROSS_REGIONS: bool = False  # 是否允许 CIDR 跨 Region 重叠
     ALLOW_VLAN_OVERLAP_ACROSS_REGIONS: bool = True  # 是否允许 VLAN 跨 Region 重复

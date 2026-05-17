@@ -10,6 +10,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:////app/data/dc_network_planner.db
+      - LOG_DIR=/app/data/logs
     volumes:
       - dc-network-planner-data:/app/data
     healthcheck:

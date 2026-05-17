@@ -1,11 +1,21 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
+from app.exception_handlers import (
+    business_error_handler,
+    resource_not_found_handler,
+    unexpected_error_handler,
+    wrapped_http_exception_handler,
+)
+from app.exceptions import BusinessError, ResourceNotFoundError
+from app.logging_config import setup_logging
+from app.middleware import request_logging_middleware
 from app.routers import (
     auth,
     backup,
@@ -26,6 +36,7 @@ from app.services.user import ensure_bootstrap_admin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    setup_logging()
     # startup: create tables
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -60,6 +71,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(request_logging_middleware)
+
+"""
+- BusinessError 未被 Router 转换时，由 business_error_handler 转成 409。
+- ResourceNotFoundError 未被 Router 转换时，由 resource_not_found_handler 转成 404。
+- Router、依赖等抛出的所有 HTTPException 由 wrapped_http_exception_handler 包装 FastAPI 默认处理器；
+  其中 4xx 只返回响应并交给访问日志记录，5xx 额外记录 app.exceptions 堆栈。
+- 其他非预期 Exception 通常先由 request_logging_middleware 的 except 捕获并返回统一 500；
+  unexpected_error_handler 是第二道防线，处理未被中间件捕获的漏网异常并复用同一套 500 响应。
+"""
+app.add_exception_handler(BusinessError, cast(Any, business_error_handler))
+app.add_exception_handler(ResourceNotFoundError, cast(Any, resource_not_found_handler))
+app.add_exception_handler(HTTPException, cast(Any, wrapped_http_exception_handler))
+app.add_exception_handler(Exception, cast(Any, unexpected_error_handler))
 
 
 # Register routers

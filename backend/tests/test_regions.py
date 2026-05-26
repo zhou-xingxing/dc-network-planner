@@ -2,6 +2,7 @@
 
 from sqlalchemy.orm import Session
 
+from app.models.change_log import ChangeLog
 from app.models.region_network_plane import RegionNetworkPlane
 from app.models.user import UserRegionPermission
 
@@ -120,7 +121,7 @@ def test_update_region_requires_administrator(client, admin_headers, user_header
     assert resp.status_code == 403
 
 
-def test_delete_region(client, admin_headers):
+def test_delete_region(client, admin_headers, test_db):
     resp = client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     region_id = resp.json()["id"]
 
@@ -129,6 +130,14 @@ def test_delete_region(client, admin_headers):
 
     resp = client.get(f"/api/regions/{region_id}", headers=admin_headers)
     assert resp.status_code == 404
+    session = Session(test_db)
+    try:
+        delete_log = (
+            session.query(ChangeLog).filter_by(entity_type="region", entity_id=region_id, action="delete").one()
+        )
+        assert delete_log.old_value == "name=北京数据中心, region_planes=0, user_region_permissions=0"
+    finally:
+        session.close()
 
 
 def test_delete_region_cleans_user_region_permissions(client, admin_headers, user_headers_factory, test_db):
@@ -148,7 +157,7 @@ def test_delete_region_cleans_user_region_permissions(client, admin_headers, use
 
 
 def test_delete_region_cascades_region_planes(client, admin_headers, user_headers_factory, test_db):
-    """删除 Region 时通过 ORM 级联删除其下所有网络平面。"""
+    """删除 Region 时清理关联数据，并在审计日志记录影响范围。"""
     region = client.post("/api/regions", json=REGION_DATA, headers=admin_headers).json()
     plane_type = client.post("/api/network-plane-types", json={"name": "管理平面"}, headers=admin_headers).json()
     user_headers = user_headers_factory([region["id"]])
@@ -166,6 +175,12 @@ def test_delete_region_cascades_region_planes(client, admin_headers, user_header
     try:
         remaining_planes = session.query(RegionNetworkPlane).filter_by(region_id=region["id"]).all()
         assert remaining_planes == []
+        remaining_permissions = session.query(UserRegionPermission).filter_by(region_id=region["id"]).all()
+        assert remaining_permissions == []
+        delete_log = (
+            session.query(ChangeLog).filter_by(entity_type="region", entity_id=region["id"], action="delete").one()
+        )
+        assert delete_log.old_value == "name=北京数据中心, region_planes=1, user_region_permissions=1"
     finally:
         session.close()
 

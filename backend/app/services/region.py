@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.exceptions import BusinessError
 from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
+from app.models.user import UserRegionPermission
 from app.schemas.region import RegionCreate, RegionUpdate
 from app.services.change_log import log_change
 from app.utils.time_utils import format_datetime
@@ -181,6 +182,13 @@ def count_region_planes(db: Session, region_id: str) -> int:
     return db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.region_id == region_id).scalar() or 0
 
 
+def count_region_permissions(db: Session, region_id: str) -> int:
+    """统计指定 Region 关联的用户授权数量。"""
+    return (
+        db.query(func.count(UserRegionPermission.id)).filter(UserRegionPermission.region_id == region_id).scalar() or 0
+    )
+
+
 def delete_region(db: Session, region_id: str, operator: str) -> bool:
     """删除 Region。
 
@@ -195,13 +203,16 @@ def delete_region(db: Session, region_id: str, operator: str) -> bool:
     region = get_region(db, region_id)
     if not region:
         return False
+    plane_count = count_region_planes(db, region_id)
+    permission_count = count_region_permissions(db, region_id)
+    old_value = f"name={region.name}, region_planes={plane_count}, user_region_permissions={permission_count}"
     log_change(
         db,
         entity_type="region",
         entity_id=region_id,
         action="delete",
         operator=operator,
-        old_value=region.name,
+        old_value=old_value,
     )
     db.delete(region)
     db.flush()

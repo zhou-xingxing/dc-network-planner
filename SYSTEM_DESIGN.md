@@ -188,6 +188,8 @@ erDiagram
 
 ### 4.2 核心表设计
 
+SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA foreign_keys=ON`，确保表结构中的 FK、`ON DELETE CASCADE` 和 `ON DELETE SET NULL` 在运行时生效。测试用内存 SQLite 使用同一连接配置，避免测试环境与实际运行环境的外键行为不一致。
+
 #### users
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -341,7 +343,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET/POST | `/api/regions` | 列表/创建 Region；创建需 administrator |
-| GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator；删除 Region 会级联删除该 Region 下所有网络平面并清理用户 Region 授权 |
+| GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator；删除 Region 会级联删除该 Region 下所有网络平面并清理用户 Region 授权，审计日志记录本次删除影响的网络平面实例数和用户授权数 |
 | GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/创建指定网络平面类型实例；写入需 Region 业务权限 |
 | PUT/DELETE | `/api/regions/{id}/planes/{plane_id}` | 更新 Region 平面业务字段（不允许修改网络平面类型）/删除平面节点；若存在子平面则拒绝删除，需用户先自底向上手动删除子平面；需 Region 业务权限 |
 
@@ -572,9 +574,10 @@ flowchart TD
 6. 网关 IP 必须位于当前平面 CIDR 范围内；私网平面推荐第一个可用 IP，非私网平面推荐最后一个可用 IP，不符合推荐值只返回提示。
 7. VLAN ID 在同一 Region 内不能重复，是否允许跨 Region 重复由 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空表示不配置 VLAN，且不参与重复性检查。
 8. 删除某个 Region 下的平面时，只允许删除没有子平面的叶子节点；如果该平面下仍有实际挂载的子平面，则拒绝删除并提示用户先删除子平面。回退挂载到 `Global` 父平面的子平面也视为该 `Global` 实例的实际子平面，会阻止删除该父平面。
-9. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
-10. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
-11. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
+9. 删除 Region 允许整体废弃该 Region，并通过 ORM 级联删除其下所有网络平面实例、清理用户 Region 授权；删除前会统计受影响的网络平面实例数和用户授权数并写入 Region 删除审计日志。前端在 Region 下存在网络平面实例时要求输入 Region 名称二次确认。
+10. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
+11. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
+12. `network_plane_types.is_private` 按类型树继承：子类型属性值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。
 

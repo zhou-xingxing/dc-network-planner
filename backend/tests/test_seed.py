@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base
+from app.database import Base, enable_sqlite_foreign_keys
 from app.models import RegionNetworkPlane
 from app.utils.ip_utils import check_overlap, ip_belongs_to_network, parse_cidr, parse_ip
 from scripts import seed as seed_module
@@ -17,6 +17,7 @@ def test_seed_creates_non_overlapping_sample_planes(monkeypatch):
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    enable_sqlite_foreign_keys(engine)
     test_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     monkeypatch.setattr(seed_module, "engine", engine)
     monkeypatch.setattr(seed_module, "SessionLocal", test_session_local)

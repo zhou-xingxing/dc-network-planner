@@ -32,5 +32,8 @@ dist/
 # Docker
 data/
 
-# AI
+# AI && Tools
 .claude/
+.codegraph/
+.cursor/
+.understand-anything/

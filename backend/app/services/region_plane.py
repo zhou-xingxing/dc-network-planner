@@ -45,7 +45,7 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     """获取 Region 下所有网络平面的树形结构。
 
     返回嵌套的树形列表，树结构来自全局 NetworkPlaneType.parent_id，
-    RegionNetworkPlane 只提供当前 Region 的启用状态和 CIDR。
+    RegionNetworkPlane 只提供当前 Region 的网络平面实例和 CIDR。
 
     Args:
         db: 数据库会话。
@@ -88,7 +88,7 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
             "children": [],
         }
 
-    # 拼装树：将子节点挂到同 Region 中已启用的父类型节点下
+    # 拼装树：将子节点挂到同 Region 中已创建的父类型节点下
     roots = []
     for plane in all_planes:
         node = plane_dict[plane.id]
@@ -114,7 +114,7 @@ def get_region_plane_tree_for_region(db: Session, region_id: str) -> list[dict[s
     return get_region_plane_tree(db, region_id)
 
 
-def enable_plane_for_region(
+def create_plane_for_region(
     db: Session,
     region_id: str,
     plane_type_id: str,
@@ -126,7 +126,7 @@ def enable_plane_for_region(
     gateway_position: str | None = None,
     gateway_ip: str | None = None,
 ) -> RegionPlaneMutationResult:
-    """为 Region 启用一个网络平面类型。
+    """为 Region 创建一个网络平面实例。
 
     Args:
         db: 数据库会话。
@@ -142,7 +142,7 @@ def enable_plane_for_region(
         新创建的 RegionNetworkPlane 对象及响应上下文。
 
     Raises:
-        BusinessError: 该类型已启用、CIDR 格式无效、父级未启用或 CIDR 越界。
+        BusinessError: 该类型已创建、CIDR 格式无效、父级不存在或 CIDR 越界。
     """
     validated_net, validated_gateway_ip = _validate_network_format(cidr, gateway_ip)
 
@@ -164,7 +164,7 @@ def enable_plane_for_region(
         .first()
     )
     if existing:
-        raise BusinessError(f"该网络平面类型已在本Region 的 {scope} 作用域中启用，不能重复创建")
+        raise BusinessError(f"该网络平面类型已在本Region 的 {scope} 作用域中创建，不能重复创建")
 
     assignment_context = _validate_plane_assignment(
         db,
@@ -274,7 +274,7 @@ def update_plane_for_region(
         .first()
     )
     if existing:
-        raise BusinessError(f"该网络平面类型已在本Region 的 {new_scope} 作用域中启用，不能重复创建")
+        raise BusinessError(f"该网络平面类型已在本Region 的 {new_scope} 作用域中创建，不能重复创建")
 
     assignment_context = _validate_plane_assignment(
         db,
@@ -349,10 +349,10 @@ def serialize_region_plane_result(result: RegionPlaneMutationResult) -> dict[str
     }
 
 
-def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operator: str) -> bool:
-    """删除平面节点，级联删除所有已启用的子类型平面。
+def delete_plane_for_region(db: Session, region_id: str, plane_id: str, operator: str) -> bool:
+    """删除 Region 下的叶子平面节点。
 
-    删除前手动记录所有受影响实体的审计日志。
+    如果该平面存在实际挂载的子平面，则拒绝删除，要求用户先自底向上删除子平面。
 
     Args:
         db: 数据库会话。
@@ -374,19 +374,9 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
     if not plane:
         return False
 
-    # 递归收集所有子代平面对象，后续审计和删除共用同一批上下文
     descendants = _collect_descendants(db, plane)
-
-    # 审计日志：记录被级联删除的子平面
-    for child in descendants:
-        log_change(
-            db,
-            entity_type="region_network_plane",
-            entity_id=child.id,
-            action="delete",
-            operator=operator,
-            old_value=(f"由父平面 {_format_plane_ref(plane)} 删除级联触发, " f"子平面={_format_plane_ref(child)}"),
-        )
+    if descendants:
+        raise BusinessError(f"该平面存在 {len(descendants)} 个子平面，请先删除子平面")
 
     # 审计日志：记录本平面删除
     log_change(
@@ -398,8 +388,6 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
         old_value=_format_plane_ref(plane),
     )
 
-    for child in reversed(descendants):
-        db.delete(child)
     db.delete(plane)
     db.flush()
     return True
@@ -551,9 +539,9 @@ def _validate_assignment_context(
 
     if plane_type.parent_id:
         if not parent_plane:
-            raise BusinessError("父级网络平面尚未在该 Region 启用")
+            raise BusinessError("父级网络平面尚未在该 Region 创建")
         if not parent_plane.cidr:
-            raise BusinessError("父级网络平面没有 CIDR 范围，无法启用或更新子平面")
+            raise BusinessError("父级网络平面没有 CIDR 范围，无法创建或更新子平面")
         parent_net = parse_cidr(parent_plane.cidr)
         if not parent_net:
             raise BusinessError("父级网络平面 CIDR 格式无效")

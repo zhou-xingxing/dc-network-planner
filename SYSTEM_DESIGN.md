@@ -5,7 +5,7 @@
 | 需求 | 说明 |
 |---|---|
 | Region 管理 | 查询、创建、更新、删除数据中心 Region |
-| 网络平面自定义 | 可自定义网络平面类型（如管理平面、业务平面、存储平面等），每个 Region 可独立启用/禁用 |
+| 网络平面自定义 | 可自定义网络平面类型（如管理平面、业务平面、存储平面等），每个 Region 可独立创建/删除对应的网络平面实例 |
 | 网络平面地址管理 | 管理每个 Region 下各网络平面的 CIDR、VLAN ID、网关位置和网关 IP |
 | IP 查重 | 给定 IP 地址或 CIDR 地址段，快速检查是否已被分配，返回所属 Region 和网络平面 |
 | Excel 导入 | 按模板格式上传 Excel，支持预览验证后批量导入 |
@@ -250,7 +250,7 @@ erDiagram
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
-| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 启用的平面类型 |
+| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 网络平面类型 |
 | scope | String(100) | NOT NULL, default="Global", UNIQUE(region_id, plane_type_id, scope) | 平面实例作用域，如业务AZ1；Global 表示作用域为全局 |
 | cidr | String(43) | NOT NULL | CIDR 地址段，如 "10.0.0.0/22" |
 | vlan_id | Integer | NULLABLE, INDEX, 1-4094 | VLAN ID |
@@ -259,9 +259,9 @@ erDiagram
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。Region 内 CIDR 不允许与非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。CIDR 是否允许跨 Region 重叠由启动期静态配置 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
+Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 创建多个实例，空作用域在接口层归一化为 `Global`。Region 内 CIDR 不允许与非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。CIDR 是否允许跨 Region 重叠由启动期静态配置 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 
-`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。`vlan_id` 在同一 Region 内不能重复，是否允许跨 Region 重复由启动期静态配置 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空时不参与重复性检查。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。CIDR 格式和网关 IP 归属这类不依赖数据库的输入错误会在访问网络平面类型、Region 平面实例等数据库数据前先被拦截。
+`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中网络平面实例本身的网关信息。`vlan_id` 在同一 Region 内不能重复，是否允许跨 Region 重复由启动期静态配置 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空时不参与重复性检查。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。CIDR 格式和网关 IP 归属这类不依赖数据库的输入错误会在访问网络平面类型、Region 平面实例等数据库数据前先被拦截。
 
 #### change_logs
 
@@ -342,8 +342,8 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|
 | GET/POST | `/api/regions` | 列表/创建 Region；创建需 administrator |
 | GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator；删除 Region 会级联删除该 Region 下所有网络平面并清理用户 Region 授权 |
-| GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/添加指定网络平面类型节点；写入需 Region 业务权限 |
-| PUT/DELETE | `/api/regions/{id}/planes/{plane_id}` | 更新 Region 平面业务字段（不允许修改网络平面类型）/删除平面节点并级联删除子平面；需 Region 业务权限 |
+| GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/创建指定网络平面类型实例；写入需 Region 业务权限 |
+| PUT/DELETE | `/api/regions/{id}/planes/{plane_id}` | 更新 Region 平面业务字段（不允许修改网络平面类型）/删除平面节点；若存在子平面则拒绝删除，需用户先自底向上手动删除子平面；需 Region 业务权限 |
 
 #### 网络平面类型
 
@@ -359,7 +359,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | GET | `/api/lookup` | IP/CIDR 查询；参数 `q` 必填，`exact` 可选且默认 true |
 | GET | `/api/excel/template` | 下载导入模板 |
 | POST | `/api/excel/import/preview` | 上传 Excel 并预览校验结果 |
-| POST | `/api/excel/import/confirm` | 确认导入预览数据，逐行启用网络平面 |
+| POST | `/api/excel/import/confirm` | 确认导入预览数据，逐行创建网络平面 |
 | GET | `/api/excel/export` | 导出 Excel，支持按 Region/平面类型筛选 |
 
 #### 审计与统计
@@ -411,7 +411,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 第二阶段: POST /api/excel/import/confirm
   → 传入 preview_id，后端使用当前登录用户作为操作者
   → 检查预览数据涉及的所有 Region 是否都允许当前用户写入
-  → 逐行启用 Region 网络平面，逐行检查 CIDR 重叠并收集业务错误
+  → 逐行创建 Region 网络平面，逐行检查 CIDR 重叠并收集业务错误
   → 逐条记录变更日志
 ```
 
@@ -548,7 +548,7 @@ flowchart TD
 
 **决策**：不再单独维护额外的网段明细表，`RegionNetworkPlane` 本身就是 Region 内的一条网络平面网段记录。
 
-**理由**：业务上 Region 内启用的网络平面即代表一个具体网段，CIDR、VLAN、网关位置和网关 IP 都属于这条网段记录。移除额外的网段明细层可以减少重复表达，让查询、导入导出和权限边界都围绕 `region_network_planes` 展开。
+**理由**：业务上 Region 内创建的网络平面即代表一个具体网段，CIDR、VLAN、网关位置和网关 IP 都属于这条网段记录。移除额外的网段明细层可以减少重复表达，让查询、导入导出和权限边界都围绕 `region_network_planes` 展开。
 
 ### 6.2 Python 端 CIDR 重叠检测
 
@@ -558,21 +558,21 @@ flowchart TD
 
 ### 6.3 全局网络平面类型树
 
-**决策**：网络平面的父子层级只维护在 `network_plane_types.parent_id`，所有 Region 共享同一棵类型树。`region_network_planes` 表示某个 Region 在某个作用域启用了哪个类型，以及该 Region 下该类型实例对应的 CIDR。
+**决策**：网络平面的父子层级只维护在 `network_plane_types.parent_id`，所有 Region 共享同一棵类型树。`region_network_planes` 表示某个 Region 在某个作用域创建了哪个类型的实例，以及该 Region 下该类型实例对应的 CIDR。
 
-**理由**：网络平面类型之间的嵌套关系是长期全局规则，不随 Region 改变。把层级放在类型表中，可避免不同 Region 维护出不一致的父子结构；Region 详情页只负责启用全局类型树中的节点。
+**理由**：网络平面类型之间的嵌套关系是长期全局规则，不随 Region 改变。把层级放在类型表中，可避免不同 Region 维护出不一致的父子结构；Region 详情页只负责创建该Region内的网络平面实例。
 
 **核心约束**：
 
 1. 添加或更新子类型平面时，父级类型必须已在同一 Region 中存在有效父实例。
-2. 子类型平面优先挂载到同 `scope` 的父平面；如果同 `scope` 父平面不存在，允许回退挂载到 `Global` 父平面；其他作用域的父平面不可作为有效父级。
+2. 子类型平面优先挂载到同 `scope` 的父平面；如果同 `scope` 父平面不存在，允许回退挂载到 `Global` 父平面。回退挂载指子平面自身仍保留原 `scope`，但树形关系上挂在 `Global` 父平面下；其他作用域的父平面不可作为有效父级。
 3. 子类型平面的 CIDR 必须落在实际挂载父平面的 CIDR 范围内。
 4. Region 内 CIDR 不允许与非有效父子/祖先关系的网络平面重叠；有效父子/祖先关系允许 CIDR 包含关系，但子平面必须落在父平面范围内。CIDR 是否允许跨 Region 重叠由 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 5. 更新父平面 CIDR 时，已有子孙平面必须仍然落在新的父平面 CIDR 范围内。
 6. 网关 IP 必须位于当前平面 CIDR 范围内；私网平面推荐第一个可用 IP，非私网平面推荐最后一个可用 IP，不符合推荐值只返回提示。
 7. VLAN ID 在同一 Region 内不能重复，是否允许跨 Region 重复由 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空表示不配置 VLAN，且不参与重复性检查。
-8. 删除某个 Region 下的父平面时，只递归删除实际挂载到该父实例下的子树，避免误删其他 `scope` 的平面实例。
-9. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复启用同一个网络平面类型。
+8. 删除某个 Region 下的平面时，只允许删除没有子平面的叶子节点；如果该平面下仍有实际挂载的子平面，则拒绝删除并提示用户先删除子平面。回退挂载到 `Global` 父平面的子平面也视为该 `Global` 实例的实际子平面，会阻止删除该父平面。
+9. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
 10. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
 11. `network_plane_types.is_private` 按类型树继承：子类型请求值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
@@ -696,7 +696,7 @@ flowchart TD
 | `/login` | Login.vue | 登录页 |
 | `/dashboard` | Dashboard.vue | 统计概览仪表盘 |
 | `/regions` | Regions.vue | 区域列表 CRUD |
-| `/regions/:id` | RegionDetail.vue | 区域详情 + 启用全局网络平面类型 |
+| `/regions/:id` | RegionDetail.vue | 区域详情 + 创建Region内网络平面类型实例 |
 | `/plane-types` | PlaneTypes.vue | 网络平面类型 CRUD，维护全局父子层级 |
 | `/lookup` | Lookup.vue | IP/CIDR 查重搜索 |
 | `/import-export` | ImportExport.vue | Excel 导入/导出（Tab 页切换） |

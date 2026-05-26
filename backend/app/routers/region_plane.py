@@ -9,8 +9,8 @@ from app.exceptions import BusinessError, ResourceNotFoundError
 from app.models.user import User
 from app.schemas.region_plane import RegionPlaneCreate, RegionPlaneUpdate
 from app.services.region_plane import (
-    disable_plane_for_region,
-    enable_plane_for_region,
+    create_plane_for_region,
+    delete_plane_for_region,
     get_region_plane_tree_for_region,
     serialize_region_plane_result,
     update_plane_for_region,
@@ -33,15 +33,15 @@ def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)) -
 
 
 @router.post("", status_code=201)
-def enable_plane_endpoint(
+def create_plane_endpoint(
     region_id: str,
     data: RegionPlaneCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_region_business_write),
 ) -> dict[str, Any]:
-    """为 Region 启用根级网络平面。"""
+    """为 Region 创建网络平面实例。"""
     try:
-        result = enable_plane_for_region(
+        result = create_plane_for_region(
             db,
             region_id,
             data.plane_type_id,
@@ -88,13 +88,16 @@ def update_plane_endpoint(
 
 
 @router.delete("/{plane_id}", status_code=204)
-def disable_plane_endpoint(
+def delete_plane_endpoint(
     region_id: str,
     plane_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_region_business_write),
 ) -> None:
-    """删除平面节点（级联删除子平面）。"""
-    deleted = disable_plane_for_region(db, region_id, plane_id, operator_name(current_user))
+    """删除平面节点。"""
+    try:
+        deleted = delete_plane_for_region(db, region_id, plane_id, operator_name(current_user))
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=404, detail="Region 网络平面不存在")

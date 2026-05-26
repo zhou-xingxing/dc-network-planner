@@ -16,7 +16,7 @@ from app.utils.time_utils import format_datetime
 
 @dataclass(frozen=True)
 class RegionWithPlaneCount:
-    """Region 及其已启用网络平面数量。"""
+    """Region 及其已创建网络平面数量。"""
 
     region: Region
     plane_count: int
@@ -177,7 +177,7 @@ def update_region(db: Session, region_id: str, data: RegionUpdate, operator: str
 
 
 def count_region_planes(db: Session, region_id: str) -> int:
-    """统计指定 Region 下已启用的网络平面数量。"""
+    """统计指定 Region 下已创建的网络平面数量。"""
     return db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.region_id == region_id).scalar() or 0
 
 

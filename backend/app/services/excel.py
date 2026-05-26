@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.exceptions import BusinessError, ResourceNotFoundError
-from app.services.region_plane import enable_plane_for_region, normalize_plane_scope
+from app.services.region_plane import create_plane_for_region, normalize_plane_scope
 from app.utils.excel_utils import build_export, parse_excel
 from app.utils.ip_utils import parse_cidr, parse_ip
 from app.utils.time_utils import utcnow
@@ -155,7 +155,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
 def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any]:
     """确认执行导入，将预览数据写入数据库。
 
-    逐行启用 Region 网络平面。
+    逐行创建 Region 网络平面。
     已过期的预览数据会被拒绝导入。
 
     Args:
@@ -180,7 +180,7 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
 
     for row in rows:
         try:
-            enable_plane_for_region(
+            create_plane_for_region(
                 db,
                 row["_region_id"],
                 row["_plane_type_id"],

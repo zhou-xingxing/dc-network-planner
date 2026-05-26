@@ -98,8 +98,8 @@
               <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
             </el-button>
             <el-popconfirm
-              title="确定删除此平面？其所有子平面也将被一并删除"
-              @confirm="disablePlane(row.id)"
+              title="确定删除此平面？若存在子平面，请先删除子平面"
+              @confirm="deletePlane(row.id)"
             >
               <template #reference>
                 <el-button size="small" type="danger" link>
@@ -178,7 +178,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRegion, enableRegionPlane, updateRegionPlane, disableRegionPlane } from '@/api/regions'
+import { getRegion, createRegionPlane, updateRegionPlane, deleteRegionPlane } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -325,7 +325,7 @@ async function submitPlaneForm() {
     }
     const result = isEditPlane.value
       ? await updateRegionPlane(props.id, editingPlaneId.value, payload)
-      : await enableRegionPlane(props.id, { ...payload, plane_type_id: planeForm.value.plane_type_id })
+      : await createRegionPlane(props.id, { ...payload, plane_type_id: planeForm.value.plane_type_id })
     ElMessage.success(isEditPlane.value ? '网络平面已更新' : '网络平面已添加')
     if (result.gateway_ip_warning) {
       ElMessage.warning(result.gateway_ip_warning)
@@ -381,9 +381,9 @@ function numberToIpv4(value) {
   return [24, 16, 8, 0].map(shift => (value >>> shift) & 255).join('.')
 }
 
-async function disablePlane(planeId) {
+async function deletePlane(planeId) {
   try {
-    await disableRegionPlane(props.id, planeId)
+    await deleteRegionPlane(props.id, planeId)
     ElMessage.success('网络平面已删除')
     await fetchRegion()
     await fetchPlanes()

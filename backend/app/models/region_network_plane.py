@@ -25,7 +25,7 @@ class RegionNetworkPlane(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
     region_id: Mapped[str] = mapped_column(String(36), ForeignKey("regions.id", ondelete="CASCADE"))
-    plane_type_id: Mapped[str] = mapped_column(String(36), ForeignKey("network_plane_types.id", ondelete="CASCADE"))
+    plane_type_id: Mapped[str] = mapped_column(String(36), ForeignKey("network_plane_types.id", ondelete="RESTRICT"))
     scope: Mapped[str] = mapped_column(String(100), nullable=False, default="Global")
     # CIDR 网络地址段，如 "10.0.0.0/22"
     cidr: Mapped[str] = mapped_column(String(43), nullable=False)

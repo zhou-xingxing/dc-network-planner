@@ -51,7 +51,9 @@ def test_db():
     yield engine
 
     # Clean up
-    Base.metadata.drop_all(bind=engine)
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        Base.metadata.drop_all(bind=connection)
     app.dependency_overrides.clear()
 
 

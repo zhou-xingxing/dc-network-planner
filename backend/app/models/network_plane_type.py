@@ -27,7 +27,7 @@ class NetworkPlaneType(Base):
     is_private: Mapped[bool] = mapped_column(Boolean, default=False)
     vrf: Mapped[str | None] = mapped_column(String(100), nullable=True)
     parent_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("network_plane_types.id", ondelete="SET NULL"), nullable=True
+        String(36), ForeignKey("network_plane_types.id", ondelete="RESTRICT"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db, onupdate=utcnow_db)

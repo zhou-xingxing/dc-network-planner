@@ -188,7 +188,7 @@ erDiagram
 
 ### 4.2 核心表设计
 
-SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA foreign_keys=ON`，确保表结构中的 FK、`ON DELETE CASCADE` 和 `ON DELETE SET NULL` 在运行时生效。测试用内存 SQLite 使用同一连接配置，避免测试环境与实际运行环境的外键行为不一致。
+SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA foreign_keys=ON`，确保表结构中的 FK 和 `ON DELETE` 约束在运行时生效。测试用内存 SQLite 使用同一连接配置，避免测试环境与实际运行环境的外键行为不一致。
 
 #### users
 
@@ -240,7 +240,7 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 | description | Text | NULLABLE | 描述 |
 | is_private | Boolean | NOT NULL, default=false | 是否私网 |
 | vrf | String(100) | NULLABLE | 所属 VRF |
-| parent_id | String(36) | FK -> self.id, SET NULL, NULLABLE | 父级网络平面类型；NULL 表示根类型 |
+| parent_id | String(36) | FK -> self.id, RESTRICT, NULLABLE | 父级网络平面类型；NULL 表示根类型 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
@@ -252,7 +252,7 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
-| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 网络平面类型 |
+| plane_type_id | String(36) | FK -> network_plane_types.id, RESTRICT | 网络平面类型 |
 | scope | String(100) | NOT NULL, default="Global", UNIQUE(region_id, plane_type_id, scope) | 平面实例作用域，如业务AZ1；Global 表示作用域为全局 |
 | cidr | String(43) | NOT NULL | CIDR 地址段，如 "10.0.0.0/22" |
 | vlan_id | Integer | NULLABLE, INDEX, 1-4094 | VLAN ID |
@@ -352,7 +352,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型，支持维护父级类型；创建需 administrator |
-| GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型；更新和删除需 administrator |
+| GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型；更新和删除需 administrator；存在子类型或已被 Region 使用时拒绝删除 |
 
 #### 查询与导入导出
 
@@ -575,9 +575,10 @@ flowchart TD
 7. VLAN ID 在同一 Region 内不能重复，是否允许跨 Region 重复由 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空表示不配置 VLAN，且不参与重复性检查。
 8. 删除某个 Region 下的平面时，只允许删除没有子平面的叶子节点；如果该平面下仍有实际挂载的子平面，则拒绝删除并提示用户先删除子平面。回退挂载到 `Global` 父平面的子平面也视为该 `Global` 实例的实际子平面，会阻止删除该父平面。
 9. 删除 Region 允许整体废弃该 Region，并通过 ORM 级联删除其下所有网络平面实例、清理用户 Region 授权；删除前会统计受影响的网络平面实例数和用户授权数并写入 Region 删除审计日志。前端在 Region 下存在网络平面实例时要求输入 Region 名称二次确认。
-10. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
-11. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
-12. `network_plane_types.is_private` 按类型树继承：子类型属性值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
+10. 删除网络平面类型时，只允许删除未被 Region 使用且没有子类型的叶子类型；数据库外键也使用 `RESTRICT` 拒绝直接删除仍有子类型或 Region 平面实例引用的类型。
+11. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
+12. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
+13. `network_plane_types.is_private` 按类型树继承：子类型属性值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。
 

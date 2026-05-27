@@ -393,13 +393,14 @@ def delete_plane_for_region(db: Session, region_id: str, plane_id: str, operator
     return True
 
 
-def _collect_descendant_ids(db: Session, plane: RegionNetworkPlane) -> list[str]:
-    """递归收集所有后代平面 ID（深度优先）。"""
-    return [child.id for child in _collect_descendants(db, plane)]
-
-
 def _collect_descendants(db: Session, plane: RegionNetworkPlane) -> list[RegionNetworkPlane]:
-    """递归收集所有后代平面对象（深度优先）。"""
+    """递归收集某个 Region 平面的实际后代实例（深度优先）。
+
+    Region 平面实例本身不保存 parent_id，父子关系由全局网络平面类型树
+    `NetworkPlaneType.parent_id` 推导；同一个父类型在不同 scope 下可能存在多个
+    实例，因此需要再通过 `_is_effective_parent()` 判断 child 是否实际挂载在当前
+    parent 下。
+    """
     result: list[RegionNetworkPlane] = []
     child_candidates = (
         db.query(RegionNetworkPlane)
@@ -419,6 +420,13 @@ def _collect_descendants(db: Session, plane: RegionNetworkPlane) -> list[RegionN
 
 
 def _is_effective_parent(db: Session, *, parent: RegionNetworkPlane, child: RegionNetworkPlane) -> bool:
+    """判断 child 是否实际挂载在 parent 下。
+
+    判断规则：
+    1. parent 与 child 的 scope 相同，父子关系成立。
+    2. parent 不是 Global 且 scope 不同，父子关系不成立。
+    3. parent 是 Global，只有在 child 的 scope 下不存在对应父平面时，父子关系才成立。
+    """
     if child.scope == parent.scope:
         return True
     if parent.scope != DEFAULT_PLANE_SCOPE:

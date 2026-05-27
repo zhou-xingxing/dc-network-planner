@@ -52,4 +52,6 @@ def test_seed_creates_non_overlapping_sample_planes(monkeypatch):
                 ), f"{left_plane.cidr} should not overlap with {right_plane.cidr}"
     finally:
         db.close()
-        Base.metadata.drop_all(bind=engine)
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            Base.metadata.drop_all(bind=connection)

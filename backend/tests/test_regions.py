@@ -10,6 +10,7 @@ REGION_DATA = {"name": "北京数据中心", "description": "Production region"}
 
 
 def test_create_region(client, admin_headers):
+    """administrator 创建 Region 时应返回新 Region 的基本信息。"""
     resp = client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     assert resp.status_code == 201
     data = resp.json()
@@ -19,12 +20,14 @@ def test_create_region(client, admin_headers):
 
 
 def test_create_duplicate_region(client, admin_headers):
+    """创建重名 Region 时应返回冲突错误。"""
     client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     resp = client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     assert resp.status_code == 409
 
 
 def test_list_regions(client, admin_headers):
+    """Region 列表应分页返回，并按名称升序排序。"""
     client.post("/api/regions", json={"name": "Region-B", "description": ""}, headers=admin_headers)
     client.post("/api/regions", json={"name": "Region-A", "description": ""}, headers=admin_headers)
     resp = client.get("/api/regions?skip=0&limit=10", headers=admin_headers)
@@ -55,6 +58,7 @@ def test_list_regions_includes_plane_count(client, admin_headers, user_headers_f
 
 
 def test_list_regions_search(client, admin_headers):
+    """Region 列表 search 参数应按名称筛选结果。"""
     client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     client.post(
         "/api/regions",
@@ -69,6 +73,7 @@ def test_list_regions_search(client, admin_headers):
 
 
 def test_update_region(client, admin_headers):
+    """administrator 可以更新 Region 名称和描述。"""
     resp = client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     region_id = resp.json()["id"]
 
@@ -84,6 +89,7 @@ def test_update_region(client, admin_headers):
 
 
 def test_update_region_rejects_duplicate_name(client, admin_headers):
+    """更新 Region 为已有名称时应返回冲突错误。"""
     client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers)
     region_b = client.post("/api/regions", json={"name": "Region-B"}, headers=admin_headers).json()
 
@@ -98,6 +104,7 @@ def test_update_region_rejects_duplicate_name(client, admin_headers):
 
 
 def test_update_region_returns_404(client, admin_headers):
+    """更新不存在的 Region 时应返回 404。"""
     resp = client.put(
         "/api/regions/missing-region",
         json={"name": "不存在"},
@@ -122,6 +129,7 @@ def test_update_region_requires_administrator(client, admin_headers, user_header
 
 
 def test_delete_region(client, admin_headers, test_db):
+    """删除 Region 后应无法再查询，并记录删除审计日志。"""
     resp = client.post("/api/regions", json=REGION_DATA, headers=admin_headers)
     region_id = resp.json()["id"]
 
@@ -186,5 +194,6 @@ def test_delete_region_cascades_region_planes(client, admin_headers, user_header
 
 
 def test_get_nonexistent_region(client, admin_headers):
+    """查询不存在的 Region 时应返回 404。"""
     resp = client.get("/api/regions/nonexistent-id", headers=admin_headers)
     assert resp.status_code == 404

@@ -2,6 +2,7 @@
 
 
 def test_create_plane_type_with_private_and_vrf(client, admin_headers):
+    """创建网络平面类型时应保存私网标记和 VRF 信息。"""
     response = client.post(
         "/api/network-plane-types",
         json={
@@ -22,6 +23,7 @@ def test_create_plane_type_with_private_and_vrf(client, admin_headers):
 
 
 def test_update_plane_type_private_and_clear_vrf(client, admin_headers):
+    """更新网络平面类型时可调整私网标记并清空 VRF。"""
     created = client.post(
         "/api/network-plane-types",
         json={"name": "业务平面", "is_private": True, "vrf": "vrf-business"},
@@ -42,6 +44,7 @@ def test_update_plane_type_private_and_clear_vrf(client, admin_headers):
 
 
 def test_plane_type_defaults_private_to_false(client, admin_headers):
+    """创建网络平面类型未传私网字段时应默认 public 且无 VRF。"""
     response = client.post("/api/network-plane-types", json={"name": "存储平面"}, headers=admin_headers)
 
     assert response.status_code == 201
@@ -79,6 +82,7 @@ def test_list_plane_types_includes_parent_name(client, admin_headers):
 
 
 def test_create_plane_type_with_parent(client, admin_headers):
+    """创建子级网络平面类型时应返回父级 ID 和父级名称。"""
     parent = client.post("/api/network-plane-types", json={"name": "父平面"}, headers=admin_headers).json()
 
     response = client.post(
@@ -222,6 +226,7 @@ def test_update_child_plane_type_rejects_mismatched_parent_privacy(client, admin
 
 
 def test_update_plane_type_returns_404(client, admin_headers):
+    """更新不存在的网络平面类型时应返回 404。"""
     response = client.put(
         "/api/network-plane-types/missing-plane-type",
         json={"name": "不存在"},
@@ -232,6 +237,7 @@ def test_update_plane_type_returns_404(client, admin_headers):
 
 
 def test_update_plane_type_rejects_invalid_parent_moves(client, admin_headers):
+    """更新父级时应拒绝自引用、移动到子级和不存在的父级。"""
     root = client.post("/api/network-plane-types", json={"name": "根平面"}, headers=admin_headers).json()
     child = client.post(
         "/api/network-plane-types",
@@ -264,6 +270,7 @@ def test_update_plane_type_rejects_invalid_parent_moves(client, admin_headers):
 
 
 def test_update_plane_type_rejects_move_that_would_exceed_depth(client, admin_headers):
+    """移动类型子树导致超过最大嵌套层级时应被拒绝。"""
     root = client.post("/api/network-plane-types", json={"name": "根平面"}, headers=admin_headers).json()
     child = client.post(
         "/api/network-plane-types",
@@ -316,6 +323,7 @@ def test_update_plane_type_rejects_parent_change_when_used_by_region(
     admin_headers,
     user_headers_factory,
 ):
+    """已被 Region 使用的网络平面类型不允许变更父级。"""
     region = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
     plane_type = client.post("/api/network-plane-types", json={"name": "业务平面"}, headers=admin_headers).json()
     new_parent = client.post("/api/network-plane-types", json={"name": "父平面"}, headers=admin_headers).json()
@@ -338,6 +346,7 @@ def test_update_plane_type_rejects_parent_change_when_used_by_region(
 
 
 def test_delete_plane_type_success_and_missing(client, admin_headers):
+    """删除未被使用的网络平面类型应成功，删除不存在类型应返回 404。"""
     created = client.post("/api/network-plane-types", json={"name": "可删除平面"}, headers=admin_headers).json()
 
     delete_response = client.delete(f"/api/network-plane-types/{created['id']}", headers=admin_headers)
@@ -348,6 +357,7 @@ def test_delete_plane_type_success_and_missing(client, admin_headers):
 
 
 def test_delete_plane_type_rejects_child_types(client, admin_headers):
+    """存在子类型的网络平面类型不允许删除。"""
     parent = client.post("/api/network-plane-types", json={"name": "父平面"}, headers=admin_headers).json()
     child_response = client.post(
         "/api/network-plane-types",
@@ -363,6 +373,7 @@ def test_delete_plane_type_rejects_child_types(client, admin_headers):
 
 
 def test_delete_plane_type_rejects_region_usage(client, admin_headers, user_headers_factory):
+    """已被 Region 网络平面引用的类型不允许删除。"""
     region = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
     plane_type = client.post("/api/network-plane-types", json={"name": "使用中平面"}, headers=admin_headers).json()
     user_headers = user_headers_factory([region["id"]])

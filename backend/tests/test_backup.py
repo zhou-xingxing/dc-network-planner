@@ -25,6 +25,7 @@ class _NoQueryDB:
 
 
 def test_get_backup_config_returns_default(client, admin_headers):
+    """首次读取备份配置时应返回系统默认值。"""
     response = client.get("/api/backup/config", headers=admin_headers)
 
     assert response.status_code == 200
@@ -37,6 +38,7 @@ def test_get_backup_config_returns_default(client, admin_headers):
 
 
 def test_backup_read_endpoints_allow_normal_user(client, user_headers_factory):
+    """普通用户可以读取备份配置和备份记录。"""
     user_headers = user_headers_factory([])
 
     config_response = client.get("/api/backup/config", headers=user_headers)
@@ -47,6 +49,7 @@ def test_backup_read_endpoints_allow_normal_user(client, user_headers_factory):
 
 
 def test_backup_write_endpoints_require_administrator(client, tmp_path, user_headers_factory):
+    """备份配置更新和手动执行备份只允许 administrator 操作。"""
     user_headers = user_headers_factory([])
 
     update_response = client.put(
@@ -66,6 +69,7 @@ def test_backup_write_endpoints_require_administrator(client, tmp_path, user_hea
 
 
 def test_update_backup_config(client, tmp_path, admin_headers):
+    """administrator 可以更新本地备份配置并刷新下次执行时间。"""
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -88,6 +92,7 @@ def test_update_backup_config(client, tmp_path, admin_headers):
 
 
 def test_update_backup_config_validates_cron_expression(client, tmp_path, admin_headers):
+    """更新备份配置时应校验 cron 表达式取值范围。"""
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -118,6 +123,7 @@ def test_update_backup_config_invalid_cron_is_rejected_before_database_query(tmp
 
 
 def test_update_backup_config_validates_backup_file_prefix(client, tmp_path, admin_headers):
+    """备份文件名前缀包含路径分隔符时应被拒绝。"""
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -149,6 +155,7 @@ def test_update_backup_config_invalid_prefix_is_rejected_before_database_query(t
 
 
 def test_update_backup_config_validates_local_path_is_writable(client, tmp_path, admin_headers):
+    """本地备份路径指向不可写目标时应返回业务错误。"""
     file_path = tmp_path / "not-a-directory"
     file_path.write_text("occupied")
 
@@ -169,6 +176,7 @@ def test_update_backup_config_validates_local_path_is_writable(client, tmp_path,
 
 
 def test_update_backup_config_validates_object_storage_target(client, monkeypatch, admin_headers):
+    """配置对象存储备份时应通过探测写入校验目标可用性。"""
     calls = []
 
     class FakeS3Client:
@@ -216,6 +224,7 @@ def test_update_backup_config_validates_object_storage_target(client, monkeypatc
 
 
 def test_update_backup_config_reuses_existing_object_storage_secret(client, monkeypatch, admin_headers):
+    """更新对象存储配置未传 secret_key 时应复用已有密钥。"""
     client_calls = []
 
     class FakeS3Client:
@@ -266,6 +275,8 @@ def test_update_backup_config_reuses_existing_object_storage_secret(client, monk
 
 
 def test_update_backup_config_rejects_invalid_object_storage_target(client, monkeypatch, admin_headers):
+    """对象存储探测写入失败时应拒绝保存配置。"""
+
     class FakeS3Client:
         def put_object(self, **kwargs):
             raise RuntimeError("access denied")
@@ -296,6 +307,7 @@ def test_update_backup_config_rejects_invalid_object_storage_target(client, monk
 
 
 def test_update_backup_config_validates_local_path(client, admin_headers):
+    """本地备份方式缺少有效路径时应由请求校验返回 422。"""
     response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -311,6 +323,7 @@ def test_update_backup_config_validates_local_path(client, admin_headers):
 
 
 def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
+    """手动执行本地备份应生成 SQLite 备份文件并记录成功状态。"""
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -338,6 +351,7 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
 
 
 def test_run_backup_records_object_storage_full_target(client, monkeypatch, admin_headers):
+    """对象存储备份成功后应记录包含 endpoint、bucket 和 key 的完整目标。"""
     calls = []
 
     class FakeS3Client:
@@ -387,6 +401,7 @@ def test_run_backup_records_object_storage_full_target(client, monkeypatch, admi
 
 
 def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp_path, monkeypatch, admin_headers):
+    """创建本地备份文件失败时应落库 failed 记录和错误信息。"""
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -417,6 +432,7 @@ def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp
 
 
 def test_run_backup_records_failed_upload_and_refreshes_next_run(client, monkeypatch, admin_headers, test_db):
+    """对象存储上传失败时应记录失败状态，并刷新启用配置的下次执行时间。"""
     calls = []
 
     class FakeS3Client:
@@ -480,6 +496,7 @@ def test_run_backup_records_failed_upload_and_refreshes_next_run(client, monkeyp
 
 
 def test_run_backup_returns_409_for_business_error(client, tmp_path, monkeypatch, admin_headers):
+    """手动备份遇到业务异常时应转换为 409 响应。"""
     config_response = client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -505,6 +522,7 @@ def test_run_backup_returns_409_for_business_error(client, tmp_path, monkeypatch
 
 
 def test_run_backup_rejects_incomplete_object_storage_config(client, admin_headers, test_db):
+    """对象存储配置缺少必要密钥时，手动备份应被拒绝。"""
     session = Session(test_db)
     try:
         config = session.query(BackupConfig).first()
@@ -527,6 +545,7 @@ def test_run_backup_rejects_incomplete_object_storage_config(client, admin_heade
 
 
 def test_list_backup_records(client, tmp_path, admin_headers):
+    """备份记录列表应返回手动备份生成的记录和总数。"""
     client.put(
         "/api/backup/config",
         headers=admin_headers,
@@ -548,6 +567,7 @@ def test_list_backup_records(client, tmp_path, admin_headers):
 
 
 def test_run_due_backup_only_when_enabled_and_due(test_db, tmp_path):
+    """定时备份仅在配置启用且到期时创建备份记录。"""
     session = Session(test_db)
     try:
         session.add(Region(name="cn-north-1", description="北京"))
@@ -570,6 +590,7 @@ def test_run_due_backup_only_when_enabled_and_due(test_db, tmp_path):
 
 
 def test_run_due_backup_skips_when_disabled(test_db, tmp_path):
+    """备份配置未启用时，到期任务也不会执行。"""
     session = Session(test_db)
     try:
         config = session.query(BackupConfig).first()
@@ -590,6 +611,7 @@ def test_run_due_backup_skips_when_disabled(test_db, tmp_path):
 
 
 def test_run_due_backup_initializes_next_run_without_running(test_db, tmp_path):
+    """启用备份但 next_run_at 为空时只初始化下次执行时间，不立即备份。"""
     session = Session(test_db)
     try:
         config = session.query(BackupConfig).first()
@@ -611,6 +633,7 @@ def test_run_due_backup_initializes_next_run_without_running(test_db, tmp_path):
 
 
 def test_run_due_backup_skips_when_not_due(test_db, tmp_path):
+    """备份配置尚未到期时定时任务应跳过执行。"""
     session = Session(test_db)
     try:
         config = session.query(BackupConfig).first()
@@ -631,6 +654,7 @@ def test_run_due_backup_skips_when_not_due(test_db, tmp_path):
 
 
 def test_calculate_next_run_daily_uses_configured_time():
+    """每日 cron 应根据基准时间算出下一次匹配的 UTC 时间点。"""
     before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
     after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
@@ -639,6 +663,7 @@ def test_calculate_next_run_daily_uses_configured_time():
 
 
 def test_calculate_next_run_weekly_uses_weekday_and_time():
+    """每周 cron 应同时遵循星期和时间计算下一次执行时间。"""
     sunday_before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
     sunday_after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
@@ -648,12 +673,14 @@ def test_calculate_next_run_weekly_uses_weekday_and_time():
 
 
 def test_calculate_next_run_supports_steps_ranges_and_lists():
+    """下一次执行时间计算应支持 cron 的步长、范围和列表语法。"""
     base_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
 
     assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(2026, 4, 25, 18, 15, tzinfo=timezone.utc)
 
 
 def test_calculate_next_run_uses_cron_day_or_weekday_semantics():
+    """cron 日期和星期字段同时受限时应采用 OR 语义。"""
     base_time = datetime(2026, 4, 30, 18, 10, tzinfo=timezone.utc)
 
     assert calculate_next_run(base_time, "30 2 2 * 1") == datetime(2026, 5, 1, 18, 30, tzinfo=timezone.utc)

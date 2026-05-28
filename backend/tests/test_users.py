@@ -7,6 +7,7 @@ from app.models.region import Region
 
 
 def test_create_user_converts_username_integrity_error_to_conflict(client, admin_headers, monkeypatch):
+    """创建用户遇到 username 唯一约束竞争时应转换为中文冲突错误。"""
     from sqlalchemy.orm import Session
 
     original_flush = Session.flush
@@ -39,6 +40,7 @@ def test_create_user_converts_username_integrity_error_to_conflict(client, admin
 
 
 def test_user_management_crud_with_region_permissions(client, admin_headers, test_db):
+    """用户管理接口应支持创建、列表、更新授权、重置密码、登录和删除全流程。"""
     region_b = client.post("/api/regions", json={"name": "Region-B"}, headers=admin_headers).json()
     region_a = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
 
@@ -112,6 +114,7 @@ def test_user_management_crud_with_region_permissions(client, admin_headers, tes
 
 
 def test_create_user_rejects_duplicate_username(client, admin_headers):
+    """创建重复用户名时应返回冲突错误。"""
     payload = {
         "username": "duplicate",
         "password": "password",
@@ -126,6 +129,7 @@ def test_create_user_rejects_duplicate_username(client, admin_headers):
 
 
 def test_user_management_rejects_missing_region_permission(client, admin_headers):
+    """为用户授权不存在的 Region 时应拒绝创建。"""
     response = client.post(
         "/api/users",
         headers=admin_headers,
@@ -142,6 +146,7 @@ def test_user_management_rejects_missing_region_permission(client, admin_headers
 
 
 def test_user_management_returns_404_for_missing_user(client, admin_headers):
+    """更新、重置密码或删除不存在用户时都应返回 404。"""
     update_response = client.put(
         "/api/users/missing-user",
         headers=admin_headers,
@@ -160,6 +165,7 @@ def test_user_management_returns_404_for_missing_user(client, admin_headers):
 
 
 def test_administrator_cannot_delete_self(client, admin_headers):
+    """administrator 不能删除当前登录的自己。"""
     me = client.get("/api/auth/me", headers=admin_headers).json()
 
     response = client.delete(f"/api/users/{me['id']}", headers=admin_headers)
@@ -169,6 +175,7 @@ def test_administrator_cannot_delete_self(client, admin_headers):
 
 
 def test_last_administrator_cannot_be_disabled(client, admin_headers):
+    """系统最后一个 administrator 不能被禁用。"""
     me = client.get("/api/auth/me", headers=admin_headers).json()
 
     response = client.put(f"/api/users/{me['id']}", json={"is_active": False}, headers=admin_headers)

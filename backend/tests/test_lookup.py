@@ -50,6 +50,7 @@ def _setup_tree_data(client, admin_headers, user_headers_factory):
 
 
 def test_lookup_by_ip(client, admin_headers, user_headers_factory):
+    """按单个 IP 查询时应返回包含该 IP 的网络平面。"""
     _, _, user_headers = _setup_data(client, admin_headers, user_headers_factory)
     resp = client.get("/api/lookup?q=10.0.0.5", headers=user_headers)
     assert resp.status_code == 200
@@ -59,6 +60,7 @@ def test_lookup_by_ip(client, admin_headers, user_headers_factory):
 
 
 def test_lookup_exact_cidr(client, admin_headers, user_headers_factory):
+    """按 CIDR 精确查询时只返回完全一致的网络平面。"""
     _, _, user_headers = _setup_data(client, admin_headers, user_headers_factory)
     resp = client.get("/api/lookup?q=10.0.0.0/24", headers=user_headers)
     assert resp.status_code == 200
@@ -104,6 +106,7 @@ def test_lookup_ip_marks_parent_and_child_as_matches(client, admin_headers, user
 
 
 def test_lookup_overlap_cidr(client, admin_headers, user_headers_factory):
+    """关闭精确匹配时，CIDR 查询应返回有重叠的网络平面。"""
     _, _, user_headers = _setup_data(client, admin_headers, user_headers_factory)
     resp = client.get("/api/lookup?q=10.0.0.0/25&exact=false", headers=user_headers)
     assert resp.status_code == 200
@@ -135,6 +138,7 @@ def test_lookup_results_order_by_region_and_plane_name(client, admin_headers, us
 
 
 def test_lookup_no_match(client, admin_headers, user_headers_factory):
+    """查询不命中任何网络平面时应返回空结果。"""
     _, _, user_headers = _setup_data(client, admin_headers, user_headers_factory)
     resp = client.get("/api/lookup?q=192.168.1.1", headers=user_headers)
     assert resp.status_code == 200
@@ -142,6 +146,7 @@ def test_lookup_no_match(client, admin_headers, user_headers_factory):
 
 
 def test_lookup_invalid_query(client, admin_headers):
+    """lookup 接口收到非法 IP/CIDR 查询字符串时应返回 400。"""
     resp = client.get("/api/lookup?q=not-an-ip", headers=admin_headers)
     assert resp.status_code == 400
 

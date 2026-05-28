@@ -8,6 +8,7 @@ from app.utils.excel_utils import generate_template, parse_excel
 
 
 def test_generate_template():
+    """生成的 Excel 导入模板应包含预期工作表和表头。"""
     buf = generate_template()
     wb = load_workbook(buf)
     ws = wb.active

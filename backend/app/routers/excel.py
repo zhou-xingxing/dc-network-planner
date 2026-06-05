@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -11,6 +11,8 @@ from app.dependencies import (
     operator_name,
 )
 from app.exceptions import BusinessError
+from app.models.network_plane_type import NetworkPlaneType
+from app.models.region import Region
 from app.models.user import User
 from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
 from app.services import excel as excel_service
@@ -20,9 +22,11 @@ router = APIRouter(prefix="/api/excel", tags=["Excel"], dependencies=[Depends(ge
 
 
 @router.get("/template")
-def download_template() -> StreamingResponse:
+def download_template(db: Session = Depends(get_db)) -> StreamingResponse:
     """下载 Excel 导入模板。"""
-    buf = generate_template()
+    region_names = [name for (name,) in db.query(Region.name).order_by(Region.name.asc()).all()]
+    plane_type_names = [name for (name,) in db.query(NetworkPlaneType.name).order_by(NetworkPlaneType.name.asc()).all()]
+    buf = generate_template(region_names=region_names, plane_type_names=plane_type_names)
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -34,6 +38,7 @@ def download_template() -> StreamingResponse:
 async def preview_import(
     file: UploadFile,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """上传 Excel 文件并预览导入结果。"""
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
@@ -41,7 +46,7 @@ async def preview_import(
 
     contents = await file.read()
     try:
-        result = excel_service.preview_import(contents, db)
+        result = excel_service.preview_import(contents, db, current_user)
     except BusinessError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
@@ -77,12 +82,11 @@ def confirm_import(
 
 @router.get("/export")
 def export_excel(
-    region_id: Optional[str] = Query(None),
-    plane_type_id: Optional[str] = Query(None),
+    region_id: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """导出 Region 网络平面数据到 Excel。"""
-    buf = excel_service.export_region_planes(db, region_id=region_id, plane_type_id=plane_type_id)
+    buf = excel_service.export_region_planes(db, region_id=region_id)
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

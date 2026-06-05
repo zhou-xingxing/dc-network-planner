@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -19,6 +19,8 @@ class ImportRow(BaseModel):
 class ImportError(BaseModel):
     row: int
     errors: list[str]
+    region_name: Optional[str] = None
+    error_type: Literal["validation", "permission", "business"] = "validation"
 
 
 class ImportPreviewResponse(BaseModel):

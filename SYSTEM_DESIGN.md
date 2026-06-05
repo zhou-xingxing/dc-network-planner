@@ -9,7 +9,7 @@
 | 网络平面地址管理 | 管理每个 Region 下各网络平面的 CIDR、VLAN ID、网关位置和网关 IP |
 | IP 查重 | 给定 IP 地址或 CIDR 地址段，快速检查是否已被分配，返回所属 Region 和网络平面 |
 | Excel 导入 | 按模板格式上传 Excel，支持预览验证后批量导入 |
-| Excel 导出 | 按 Region/网络平面过滤导出为 Excel |
+| Excel 导出 | 按 Region 过滤导出为 Excel |
 | 变更追溯 | 所有数据操作（创建/更新/删除/导入）自动记录变更日志，可查询操作者、时间、变更内容 |
 | 数据备份 | 支持配置备份目标，手动立即备份，按五段式 cron 表达式自动备份 |
 | 认证与权限 | 支持本地账号登录，按 administrator / user 两类角色控制全局配置和 Region 业务数据写权限 |
@@ -68,7 +68,7 @@ graph TB
 后端采用经典的三层架构：
 
 1. **Router 层** - API 端点定义，请求参数解析，HTTP 状态码转换和响应序列化。依赖 `get_db` 获取数据库会话，依赖 `get_current_user` / `require_administrator` / `ensure_region_business_write_allowed` 完成认证与授权；不直接访问 SQLAlchemy Model。
-2. **Service 层** - 核心业务逻辑和数据访问，包括 CIDR 重叠检测、变更日志记录、Excel 解析验证、列表聚合统计和响应所需业务上下文。Router 层调用 Service 层，Service 层操作 Model 层；同一请求链路中已获取并校验过的实体或上下文应继续复用，避免重复查询同一业务对象。
+2. **Service 层** - 核心业务逻辑和数据访问，包括 CIDR 重叠检测、变更日志记录、Excel 导入业务校验、列表聚合统计和响应所需业务上下文。Router 层调用 Service 层，Service 层操作 Model 层；同一请求链路中已获取并校验过的实体或上下文应继续复用，避免重复查询同一业务对象。Excel 工具函数只负责工作簿读写、表头匹配和单元格基础清理，空作用域默认 Global、VLAN 合法性等业务解释在 Service 层完成。
 3. **Model 层** - SQLAlchemy ORM 模型，定义数据表结构和关系。通过 Alembic 管理数据库迁移。
 
 ### 3.2 前端组件架构
@@ -362,7 +362,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | GET | `/api/excel/template` | 下载导入模板 |
 | POST | `/api/excel/import/preview` | 上传 Excel 并预览校验结果 |
 | POST | `/api/excel/import/confirm` | 确认导入预览数据，逐行创建网络平面 |
-| GET | `/api/excel/export` | 导出 Excel，支持按 Region/平面类型筛选 |
+| GET | `/api/excel/export` | 导出 Excel，支持按 Region 筛选 |
 
 #### 审计与统计
 
@@ -391,6 +391,10 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 - Region 网络平面树、IP/CIDR 查询结果、Excel 导出：Region 名称、网络平面类型名称、`scope`、CIDR 升序
 - 统计分布：按展示名称升序；涉及私网/非私网分组时固定 `非私网` 在前、`私网` 在后；导入预览保持 Excel 原始行号顺序
 
+#### Excel 导出字段
+
+网络平面明细导出包含：区域、网络平面类型、父级网络平面类型、作用域、是否私网、VRF、IP地址段(CIDR)、VLAN ID、网关位置、网关IP、更新时间。
+
 #### IP 查重 (GET /api/lookup)
 
 查询参数：`q` (IP/CIDR), `exact` (bool)
@@ -407,12 +411,20 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 
 ```
 第一阶段: POST /api/excel/import/preview
-  → 上传 .xlsx Excel → 解析验证 → 返回有效行预览数据 + preview_id
+  → 上传 .xlsx Excel → 解析验证和 Region 导入权限标注 → 返回有效行预览数据 + preview_id
+  → 解析前校验表头必须匹配当前导入模板，不兼容缺少作用域列等非当前模板结构
+  → Excel 工具层只读取工作簿、跳过空行并按模板列返回清理后的原始单元格值
+  → Service 层解释导入业务字段：空作用域归一化为 Global，VLAN 原始值解析为整数并校验 1-4094 范围
+  → 导入模板表头标注必填/选填；作用域空值默认 Global，CIDR 表头给出格式示例，VLAN ID 表头标注 1-4094 范围
+  → 导入模板基于当前数据库生成 Region 名称和网络平面类型名称下拉候选项，便于用户选择已有数据
+  → 预览阶段校验网关 IP 格式及其是否位于本行 CIDR 范围内
+  → 当前用户无权管理的 Region 行进入 error_rows，提示仅提供预览功能、不能实际导入
+  → error_rows 携带 region_name 和 error_type，前端按权限/校验/业务错误分组展示
   → 预览数据在内存缓存 30 分钟
 
 第二阶段: POST /api/excel/import/confirm
   → 传入 preview_id，后端使用当前登录用户作为操作者
-  → 检查预览数据涉及的所有 Region 是否都允许当前用户写入
+  → 再次检查预览数据涉及的所有 Region 是否都允许当前用户写入
   → 逐行创建 Region 网络平面，逐行检查 CIDR 重叠并收集业务错误
   → 逐条记录变更日志
 ```
@@ -529,7 +541,7 @@ flowchart TD
 3. `user` 不能管理用户、Region 元数据和全局配置。
 4. `administrator` 可以管理其他用户账号，但不能删除当前登录用户。
 5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
-6. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
+6. Excel 导入预览会将当前用户无权管理的 Region 行标记为错误行，并提示仅提供预览功能、不能实际导入；确认导入仍会二次检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
 7. 变更日志的 `operator` 统一使用当前登录用户 `username`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
@@ -602,7 +614,7 @@ flowchart TD
 
 **理由**：预览步骤让用户在提交前检查解析结果和验证错误。确认时只需传入 preview_id，避免大数据量重新传输。预览缓存 30 分钟防止内存无限增长。
 
-**边界**：当前导入解析仅支持 `.xlsx` 工作簿；预览响应中的 `rows` 只包含可确认导入的有效行，错误行通过 `error_rows` 返回。确认阶段只把可预期的业务错误按行收集，数据库或运行时异常交由请求事务统一回滚。
+**边界**：当前导入解析仅支持 `.xlsx` 工作簿；Excel 工具层只负责工作簿打开、模板表头匹配、空行跳过和单元格基础清理，不解释 Region 网络平面的业务规则。空作用域默认 Global、VLAN 整数与范围、CIDR/IP 格式、Region 和网络平面类型存在性、用户 Region 写权限都在 Service 预览阶段校验。预览响应中的 `rows` 只包含可确认导入的有效行，错误行通过 `error_rows` 返回。预览阶段会按当前用户的 Region 业务写权限提前标注无权导入的行，并在错误行中携带 Region 名称与错误类型，便于前端区分权限、校验和业务错误。确认阶段仍以服务端缓存的有效行为准，并再次执行 Region 权限检查。确认阶段只把可预期的业务错误按行收集，数据库或运行时异常交由请求事务统一回滚。
 
 ### 6.7 前端本地状态管理
 

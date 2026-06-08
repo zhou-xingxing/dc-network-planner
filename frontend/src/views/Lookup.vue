@@ -101,7 +101,7 @@ async function handleSearch() {
     const res = await lookupIP(query.value.trim(), exact.value)
     results.value = res.results || []
     total.value = res.total || 0
-  } catch (e) {
+  } catch {
     results.value = []
     total.value = 0
   } finally {

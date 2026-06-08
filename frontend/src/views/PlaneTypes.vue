@@ -226,7 +226,7 @@ async function handleDelete(id: EntityId) {
     await deletePlaneType(id)
     ElMessage.success('删除成功')
     await fetchData()
-  } catch (e) {
+  } catch {
     // Error handled by Axios interceptor
   }
 }

@@ -154,6 +154,7 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   ├── index.html
 │   ├── package.json                      # NPM 依赖
 │   ├── package-lock.json                 # NPM 锁定依赖
+│   ├── eslint.config.js                  # ESLint 配置
 │   ├── tsconfig.json                     # TypeScript 配置
 │   ├── vite.config.ts                    # Vite 配置 (含 API 代理)
 │   ├── .env.development                  # 开发环境变量
@@ -263,6 +264,7 @@ npm run dev -- --host 0.0.0.0
 前端改动提交前建议执行：
 
 ```bash
+npm run lint
 npm run type-check
 npm run build
 ```
@@ -419,7 +421,7 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 |---|---|---|
 | `lint` | ruff → black --check → mypy | 所有 push 和 PR |
 | `test-backend` | pytest tests/ -v | 所有 push 和 PR |
-| `build-frontend` | npm install → npm run type-check → npm run build | 所有 push 和 PR |
+| `build-frontend` | npm install → npm run lint → npm run type-check → npm run build | 所有 push 和 PR |
 | `build-and-push` | Docker 构建并推送到 GHCR | main 分支 push 或 tag 推送 |
 
 ## 代码行数统计
@@ -429,9 +431,9 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 |---|---:|---:|
 | 后端代码 | 77 | 5,562 |
 | 后端测试 | 19 | 3,372 |
-| 前端代码 | 44 | 4,812 |
+| 前端代码 | 45 | 4,856 |
 | 前端测试 | 0 | 0 |
-| 合计 | 140 | 13,746 |
+| 合计 | 141 | 13,790 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

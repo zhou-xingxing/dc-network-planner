@@ -341,7 +341,7 @@ async function submitPlaneForm() {
     planeDialogVisible.value = false
     await fetchRegion()
     await fetchPlanes()
-  } catch (e) {
+  } catch {
     // Error handled by Axios interceptor
   } finally {
     planeSubmitting.value = false
@@ -395,7 +395,7 @@ async function deletePlane(planeId: EntityId) {
     ElMessage.success('网络平面已删除')
     await fetchRegion()
     await fetchPlanes()
-  } catch (e) { /* handled */ }
+  } catch { /* handled */ }
 }
 
 // ---------- Region 操作 ----------

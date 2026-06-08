@@ -29,6 +29,7 @@
 | 前端框架 | Vue 3 | 3.5+ | Composition API，体积小，生态丰富 |
 | 前端语言 | TypeScript | 6.0+ | 为 API 响应、表单和页面状态提供静态类型约束 |
 | 前端构建 | Vite | 5.4+ | 极速 HMR，开箱即用 |
+| 前端质量检查 | ESLint | 9.x | Vue/TypeScript 代码质量检查 |
 | UI 组件库 | Element Plus | 2.8+ | 中文友好，表格/表单/对话框组件丰富 |
 | 状态管理 | Pinia | 2.2+ | Vue 3 官方推荐状态管理 |
 | HTTP 客户端 | Axios | 1.7+ | 拦截器、请求/响应转换 |
@@ -849,8 +850,9 @@ docker run -d --name dc-network-planner-frontend -p 80:80 \
 2. **数据库持久化**：后端通过 `DATABASE_URL` 将数据库路径指向 `/app/data/`，通过 Docker volume 或 bind mount 持久化
 3. **前端代理**：Nginx 在容器启动时通过 `BACKEND_URL` 环境变量（envsubst）配置后端代理地址，支持运行时配置无需重新构建
 4. **健康检查**：后端配置 `HEALTHCHECK` 确保服务可用后才接受流量
-5. **构建缓存**：`requirements.txt` 和 `package.json` 在源码之前复制，利用 Docker 层缓存加速重复构建
-6. **启动管理员**：首次启动且 `users` 表为空时，后端会按 `BOOTSTRAP_ADMIN_*` 创建初始 administrator；生产环境必须覆盖默认密码和 `JWT_SECRET_KEY`
+5. **构建缓存与可重复安装**：`requirements.txt`、`package.json` 和 `package-lock.json` 在源码之前复制；前端镜像使用 `npm ci` 按锁定依赖安装
+6. **前端构建门禁**：前端 Docker builder 阶段执行 `npm run lint && npm run type-check && npm run build`，保证镜像构建与本地/CI 的基础检查一致
+7. **启动管理员**：首次启动且 `users` 表为空时，后端会按 `BOOTSTRAP_ADMIN_*` 创建初始 administrator；生产环境必须覆盖默认密码和 `JWT_SECRET_KEY`
 
 ## 9. CI/CD 设计
 
@@ -861,7 +863,7 @@ graph TB
     Push["代码推送（git push）"] --> GHA["GitHub Actions"]
     GHA --> Lint["lint<br/>ruff 检查<br/>black --check<br/>mypy 检查"]
     GHA --> Test["test-backend<br/>pytest 53 项<br/>SQLite 内存"]
-    GHA --> Build["build-frontend<br/>npm build<br/>编译检查"]
+    GHA --> Build["build-frontend<br/>npm lint<br/>type-check<br/>build"]
     Lint --> Publish["build-and-push<br/>Docker buildx<br/>ghcr.io 推送"]
     Test --> Publish
     Build --> Publish
@@ -887,8 +889,8 @@ graph TB
    - pip 缓存加速重复运行
    - 每个测试用例独立内存 SQLite 数据库，互不干扰
 
-3. **build-frontend** — Node 20, `npm install && npm run type-check && npm run build`
-   - 验证 TypeScript 类型检查和前端编译是否通过
+3. **build-frontend** — Node 20, `npm install && npm run lint && npm run type-check && npm run build`
+   - 验证 ESLint、TypeScript 类型检查和前端编译是否通过
    - MVP 阶段前端逻辑简单，不编写单元测试
 
 4. **build-and-push** — 依赖 lint + test-backend + build-frontend 三个 Job 成功

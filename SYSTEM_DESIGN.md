@@ -27,6 +27,7 @@
 | 时区处理 | zoneinfo | Python 内置 | 使用 IANA 时区名解释业务时间 |
 | IP 处理 | ipaddress | Python 内置 | 标准库，CIDR 解析与重叠检测 |
 | 前端框架 | Vue 3 | 3.5+ | Composition API，体积小，生态丰富 |
+| 前端语言 | TypeScript | 6.0+ | 为 API 响应、表单和页面状态提供静态类型约束 |
 | 前端构建 | Vite | 5.4+ | 极速 HMR，开箱即用 |
 | UI 组件库 | Element Plus | 2.8+ | 中文友好，表格/表单/对话框组件丰富 |
 | 状态管理 | Pinia | 2.2+ | Vue 3 官方推荐状态管理 |
@@ -37,7 +38,7 @@
 
 ```mermaid
 graph TB
-    subgraph Frontend["前端 (Vue 3 + Vite)"]
+    subgraph Frontend["前端 (Vue 3 + TypeScript + Vite)"]
         direction TB
         FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 个人主页 · 用户管理"]
         FE_Axios["Axios / REST API<br/>自动注入 Authorization: Bearer token"]
@@ -73,14 +74,15 @@ graph TB
 
 ### 3.2 前端组件架构
 
-前端采用 Vue 3 Composition API + Vue Router 组织页面：
+前端采用 Vue 3 Composition API + TypeScript + Vue Router 组织页面：
 
 - **App.vue** - 根组件，仅包含 `<router-view />`
 - **AppLayout.vue** - 布局组件，包含侧边栏导航 + 顶栏（面包屑 + 当前用户入口 + 退出登录）+ 内容区
 - **views/** - 页面组件，每个对应一个路由
-- **api/** - Axios 请求封装模块，按业务领域拆分
+- **api/** - Axios 请求封装模块，按业务领域拆分，请求参数和响应数据使用 TypeScript 类型约束
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
+- **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、备份、导入导出和统计响应
 
 ## 4. 数据模型设计
 
@@ -885,8 +887,8 @@ graph TB
    - pip 缓存加速重复运行
    - 每个测试用例独立内存 SQLite 数据库，互不干扰
 
-3. **build-frontend** — Node 20, `npm install && npm run build`
-   - 仅验证编译是否通过
+3. **build-frontend** — Node 20, `npm install && npm run type-check && npm run build`
+   - 验证 TypeScript 类型检查和前端编译是否通过
    - MVP 阶段前端逻辑简单，不编写单元测试
 
 4. **build-and-push** — 依赖 lint + test-backend + build-frontend 三个 Job 成功

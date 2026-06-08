@@ -68,42 +68,29 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
 import { fetchChangeLogs } from '@/api/excel'
 import { Search } from '@element-plus/icons-vue'
+import { actionLabel, actionTag, entityTypeLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import type { ChangeLog, ChangeLogQueryParams } from '@/types'
 
 const loading = ref(false)
-const items = ref([])
+const items = ref<ChangeLog[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const filters = reactive({
+const filters = reactive<Pick<ChangeLogQueryParams, 'entity_type' | 'action' | 'operator'>>({
   entity_type: '',
   action: '',
   operator: '',
 })
 
-function entityTypeLabel(t) {
-  const map = { region: 'Region', network_plane_type: '网络平面类型', region_network_plane: 'Region 网络平面' }
-  return map[t] || t
-}
-
-function actionTag(a) {
-  const map = { create: 'success', update: 'warning', delete: 'danger', import: 'primary' }
-  return map[a] || 'info'
-}
-
-function actionLabel(a) {
-  const map = { create: '创建', update: '更新', delete: '删除', import: '导入' }
-  return map[a] || a
-}
-
 async function fetchData() {
   loading.value = true
   try {
-    const params = { skip: (page.value - 1) * pageSize.value, limit: pageSize.value }
+    const params: ChangeLogQueryParams = { skip: (page.value - 1) * pageSize.value, limit: pageSize.value }
     if (filters.entity_type) params.entity_type = filters.entity_type
     if (filters.action) params.action = filters.action
     if (filters.operator) params.operator = filters.operator

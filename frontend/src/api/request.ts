@@ -1,6 +1,11 @@
 import axios from 'axios'
+import type { AxiosError } from 'axios'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '@/stores/app'
+
+interface ApiErrorBody {
+  detail?: unknown
+}
 
 const request = axios.create({
   baseURL: '/api',
@@ -12,7 +17,7 @@ const ERROR_MESSAGE_OPTIONS = {
   showClose: true,
 }
 
-function showErrorMessage(message) {
+function showErrorMessage(message: string) {
   // 报错信息通常比成功提示更长，给用户留足阅读和手动关闭时间。
   ElMessage.error({
     message,
@@ -20,8 +25,16 @@ function showErrorMessage(message) {
   })
 }
 
-function resolveErrorMessage(error) {
-  const detail = error.response?.data?.detail
+function getResponseDetail(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') {
+    return undefined
+  }
+  const detail = (data as ApiErrorBody).detail
+  return typeof detail === 'string' && detail.trim() ? detail : undefined
+}
+
+function resolveErrorMessage(error: AxiosError<unknown>) {
+  const detail = getResponseDetail(error.response?.data)
   if (typeof detail === 'string' && detail.trim()) {
     return detail
   }
@@ -44,11 +57,11 @@ request.interceptors.request.use((config) => {
 
 request.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  (error: AxiosError<unknown>) => {
     const appStore = useAppStore()
     if (error.response?.status === 401) {
       if (error.config?.url === '/auth/login') {
-        showErrorMessage(error.response?.data?.detail || '用户名或密码错误')
+        showErrorMessage(getResponseDetail(error.response?.data) || '用户名或密码错误')
         return Promise.reject(error)
       }
       appStore.logout()
@@ -60,7 +73,7 @@ request.interceptors.response.use(
       return Promise.reject(error)
     }
     if (error.response?.status === 403) {
-      showErrorMessage(error.response?.data?.detail || '无权限执行该操作')
+      showErrorMessage(getResponseDetail(error.response?.data) || '无权限执行该操作')
       return Promise.reject(error)
     }
     showErrorMessage(resolveErrorMessage(error))

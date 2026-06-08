@@ -85,21 +85,31 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { fetchRegions } from '@/api/regions'
 import { createUser, deleteUser, fetchUsers, resetUserPassword, updateUser } from '@/api/users'
+import type { EntityId, Region, User, UserRole, UserUpdatePayload } from '@/types'
 
-const users = ref([])
-const regions = ref([])
+interface UserForm {
+  username: string
+  password: string
+  role: UserRole
+  is_active: boolean
+  permitted_region_ids: EntityId[]
+}
+
+const users = ref<User[]>([])
+const regions = ref<Region[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const resetVisible = ref(false)
 const editingId = ref('')
-const formRef = ref()
-const form = reactive({
+const formRef = ref<FormInstance>()
+const form = reactive<UserForm>({
   username: '',
   password: '',
   role: 'user',
@@ -147,7 +157,7 @@ function openCreate() {
   dialogVisible.value = true
 }
 
-function openEdit(row) {
+function openEdit(row: User) {
   editingId.value = row.id
   Object.assign(form, {
     username: row.username,
@@ -163,7 +173,7 @@ async function handleSubmit() {
   await formRef.value?.validate()
   submitting.value = true
   try {
-    const payload = {
+    const payload: UserUpdatePayload = {
       role: form.role,
       is_active: form.is_active,
       permitted_region_ids: form.role === 'user' ? form.permitted_region_ids : [],
@@ -181,7 +191,7 @@ async function handleSubmit() {
   }
 }
 
-function openReset(row) {
+function openReset(row: User) {
   resetForm.id = row.id
   resetForm.password = ''
   resetVisible.value = true
@@ -193,7 +203,7 @@ async function handleReset() {
   resetVisible.value = false
 }
 
-async function handleDelete(row) {
+async function handleDelete(row: User) {
   await ElMessageBox.confirm(`确定删除用户 ${row.username}？`, '确认删除', { type: 'warning' })
   await deleteUser(row.id)
   ElMessage.success('删除成功')

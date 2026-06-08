@@ -7,7 +7,7 @@
 DC Network Planner 是用于管理数据中心 Region 网络平面地址规划的 Web 应用，替代 Excel 手工维护。界面语言为中文（zh-CN）。
 
 - 后端：Python 3.12 + FastAPI + SQLAlchemy + SQLite
-- 前端：Vue 3 + Vite + Element Plus
+- 前端：Vue 3 + TypeScript + Vite + Element Plus
 
 ## 最高优先级约束
 
@@ -15,7 +15,7 @@ DC Network Planner 是用于管理数据中心 Region 网络平面地址规划�
 - 后端返回给用户的业务错误、前端展示给用户的操作失败提示默认使用中文；HTTP 状态码、字段名、协议名、第三方库原始错误等技术术语可保留英文，系统日志和内部诊断错误不受此约束。
 - 更新关键代码实现逻辑后，必须同步更新 `SYSTEM_DESIGN.md` 中对应设计内容。
 - 做后端功能改动时，默认用 `cd backend && make check` 作为完整门禁；需要覆盖率视图时再跑 `cd backend && make coverage`。
-- 做前端改动时，默认至少跑 `cd frontend && npm run build`。
+- 做前端改动时，默认至少跑 `cd frontend && npm run type-check && npm run build`。
 - 只有用户要求规划后续工作时再阅读 `TODO.md`，不要把 TODO 当作当前任务来源。
 
 ## 后端实现约束
@@ -33,6 +33,11 @@ DC Network Planner 是用于管理数据中心 Region 网络平面地址规划�
 ## 前端实现约束
 
 - 全项目使用 Vue 3 Composition API（`<script setup>`）和 Element Plus 中文界面。
+- 新增或迁移前端 TypeScript 代码时，优先使用 `<script setup lang="ts">`、`.ts` 模块和显式业务类型，保持渐进迁移，不为改类型顺手重构业务逻辑。
+- API 请求/响应、表单模型、表格行数据、路由参数等跨组件或跨层数据必须定义清晰类型；局部临时状态可依赖 TypeScript 推断，避免重复标注显而易见的类型。
+- 避免使用 `any`。确实无法确定外部数据形状时优先使用 `unknown` 并在使用前做类型收窄；如必须使用 `any`，需用简短注释说明原因。
+- 只导入类型时使用 `import type`，避免产生不必要的运行时代码。
+- 不使用 `// @ts-ignore` 掩盖类型错误；极少数必须跳过的场景使用 `// @ts-expect-error`，并说明原因。
 - 业务数据由各 view 自行 fetch，不放入 Pinia 做全局缓存。
 - 新增 API 调用、路由和页面状态时沿用 `frontend/src` 下现有组织方式。
 - 更细设计按需查 `SYSTEM_DESIGN.md` 和现有源码。

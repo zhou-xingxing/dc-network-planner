@@ -106,32 +106,35 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { createPlaneType, deletePlaneType, fetchPlaneTypes, updatePlaneType } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/time'
+import { buildPlaneTypeTree } from '@/utils/tree'
 import { Delete, Edit, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
+import type { EntityId, NetworkPlaneType, NetworkPlaneTypeCreatePayload } from '@/types'
 
 const loading = ref(false)
 const appStore = useAppStore()
-const items = ref([])
+const items = ref<NetworkPlaneType[]>([])
 const total = ref(0)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
-const editId = ref(null)
-const formRef = ref(null)
-const form = ref({ name: '', parent_id: '', description: '', is_private: false, vrf: '' })
+const editId = ref<EntityId | null>(null)
+const formRef = ref<FormInstance>()
+const form = ref<NetworkPlaneTypeCreatePayload>({ name: '', parent_id: null, description: '', is_private: false, vrf: '' })
 
 const parentOptions = computed(() => {
   if (!isEdit.value || !editId.value) return items.value
-  const blocked = new Set([editId.value, ...collectDescendantIds(editId.value)])
+  const blocked = new Set<EntityId>([editId.value, ...collectDescendantIds(editId.value)])
   return items.value.filter(item => !blocked.has(item.id))
 })
-const treeItems = computed(() => buildTree(items.value))
-const parentOptionTree = computed(() => buildTree(parentOptions.value))
+const treeItems = computed(() => buildPlaneTypeTree(items.value))
+const parentOptionTree = computed(() => buildPlaneTypeTree(parentOptions.value))
 const inheritsParentPrivacy = computed(() => Boolean(form.value.parent_id))
 
 watch(() => form.value.parent_id, syncPrivacyFromParent)
@@ -154,16 +157,16 @@ async function fetchData() {
 function showCreateDialog() {
   isEdit.value = false
   editId.value = null
-  form.value = { name: '', parent_id: '', description: '', is_private: false, vrf: '' }
+  form.value = { name: '', parent_id: null, description: '', is_private: false, vrf: '' }
   dialogVisible.value = true
 }
 
-function showEditDialog(row) {
+function showEditDialog(row: NetworkPlaneType) {
   isEdit.value = true
   editId.value = row.id
   form.value = {
     name: row.name,
-    parent_id: row.parent_id || '',
+    parent_id: row.parent_id || null,
     description: row.description || '',
     is_private: Boolean(row.is_private),
     vrf: row.vrf || '',
@@ -171,7 +174,7 @@ function showEditDialog(row) {
   dialogVisible.value = true
 }
 
-function syncPrivacyFromParent(parentId) {
+function syncPrivacyFromParent(parentId?: EntityId | null) {
   if (!parentId) return
   const parent = items.value.find(item => item.id === parentId)
   if (parent) {
@@ -179,8 +182,8 @@ function syncPrivacyFromParent(parentId) {
   }
 }
 
-function collectDescendantIds(parentId) {
-  const result = []
+function collectDescendantIds(parentId: EntityId): EntityId[] {
+  const result: EntityId[] = []
   for (const item of items.value) {
     if (item.parent_id === parentId) {
       result.push(item.id, ...collectDescendantIds(item.id))
@@ -189,50 +192,22 @@ function collectDescendantIds(parentId) {
   return result
 }
 
-function buildTree(sourceItems) {
-  const itemMap = new Map()
-  for (const item of sourceItems) {
-    itemMap.set(item.id, { ...item, children: [], level: 1 })
-  }
-
-  const roots = []
-  for (const item of sourceItems) {
-    const node = itemMap.get(item.id)
-    const parent = item.parent_id ? itemMap.get(item.parent_id) : null
-    if (parent) {
-      parent.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  }
-
-  markTreeLevel(roots)
-  return roots
-}
-
-function markTreeLevel(nodes, level = 1) {
-  for (const node of nodes) {
-    node.level = level
-    markTreeLevel(node.children, level + 1)
-  }
-}
-
-function planeLevelLabel(level) {
+function planeLevelLabel(level: number) {
   const levelNames = ['', '一级', '二级', '三级']
   return `${levelNames[level] || `${level}级`}网络平面`
 }
 
-function privacyTagType(isPrivate) {
+function privacyTagType(isPrivate: boolean) {
   return isPrivate ? 'success' : 'primary'
 }
 
 async function handleSubmit() {
-  const valid = await formRef.value.validate().catch(() => false)
+  const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   submitting.value = true
   try {
     const payload = { ...form.value, parent_id: form.value.parent_id || null }
-    if (isEdit.value) {
+    if (isEdit.value && editId.value) {
       await updatePlaneType(editId.value, payload)
       ElMessage.success('更新成功')
     } else {
@@ -246,7 +221,7 @@ async function handleSubmit() {
   }
 }
 
-async function handleDelete(id) {
+async function handleDelete(id: EntityId) {
   try {
     await deletePlaneType(id)
     ElMessage.success('删除成功')

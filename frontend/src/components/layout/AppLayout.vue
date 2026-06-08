@@ -1,13 +1,19 @@
 <template>
   <div class="app-layout">
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ 'is-collapsed': appStore.sidebarCollapsed }">
       <SideMenu />
     </aside>
     <div class="main-container">
       <header class="app-header">
         <div class="header-left">
-          <el-icon class="menu-fold" @click="isCollapsed = !isCollapsed">
-            <Fold v-if="!isCollapsed" />
+          <el-icon
+            class="menu-fold"
+            role="button"
+            tabindex="0"
+            @click="appStore.toggleSidebar"
+            @keydown="handleToggleKeydown"
+          >
+            <Fold v-if="!appStore.sidebarCollapsed" />
             <Expand v-else />
           </el-icon>
           <el-breadcrumb separator="/">
@@ -33,7 +39,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { UserFilled, Fold, Expand } from '@element-plus/icons-vue'
@@ -42,11 +47,16 @@ import SideMenu from './SideMenu.vue'
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
-const isCollapsed = ref(false)
 
 function handleLogout() {
   appStore.logout()
   router.push('/login')
+}
+
+function handleToggleKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  appStore.toggleSidebar()
 }
 </script>
 
@@ -64,6 +74,11 @@ function handleLogout() {
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 10;
+  transition: width var(--transition-base);
+}
+
+.sidebar.is-collapsed {
+  width: 64px;
 }
 
 .main-container {

@@ -1,9 +1,23 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import type { CurrentUser, EntityId } from '@/types'
+
+function loadCurrentUser(): CurrentUser | null {
+  const raw = localStorage.getItem('dc_network_planner_current_user')
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as CurrentUser
+  } catch {
+    localStorage.removeItem('dc_network_planner_current_user')
+    return null
+  }
+}
 
 export const useAppStore = defineStore('app', () => {
   const token = ref(localStorage.getItem('dc_network_planner_token') || '')
-  const currentUser = ref(JSON.parse(localStorage.getItem('dc_network_planner_current_user') || 'null'))
+  const currentUser = ref<CurrentUser | null>(loadCurrentUser())
   const sidebarCollapsed = ref(false)
   const isAuthenticated = computed(() => Boolean(token.value))
   const isAdministrator = computed(() => currentUser.value?.role === 'administrator')
@@ -11,14 +25,14 @@ export const useAppStore = defineStore('app', () => {
     new Set((currentUser.value?.permitted_regions || []).map((item) => item.id))
   )
 
-  function setSession(accessToken, user) {
+  function setSession(accessToken: string, user: CurrentUser) {
     token.value = accessToken
     currentUser.value = user
     localStorage.setItem('dc_network_planner_token', accessToken)
     localStorage.setItem('dc_network_planner_current_user', JSON.stringify(user))
   }
 
-  function setCurrentUser(user) {
+  function setCurrentUser(user: CurrentUser) {
     currentUser.value = user
     localStorage.setItem('dc_network_planner_current_user', JSON.stringify(user))
   }
@@ -34,7 +48,7 @@ export const useAppStore = defineStore('app', () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
-  function canManageRegionBusiness(regionId) {
+  function canManageRegionBusiness(regionId: EntityId) {
     return currentUser.value?.role === 'user' && permittedRegionIds.value.has(regionId)
   }
 

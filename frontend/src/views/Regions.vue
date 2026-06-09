@@ -134,31 +134,33 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchRegions, createRegion, updateRegion, deleteRegion } from '@/api/regions'
 import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
+import type { EntityId, Region, RegionCreatePayload } from '@/types'
 
 const router = useRouter()
 const appStore = useAppStore()
 const loading = ref(false)
-const regions = ref([])
+const regions = ref<Region[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
-const editId = ref(null)
-const formRef = ref(null)
-const form = ref({ name: '', description: '' })
+const editId = ref<EntityId | null>(null)
+const formRef = ref<FormInstance>()
+const form = ref<RegionCreatePayload>({ name: '', description: '' })
 const deleteDialogVisible = ref(false)
 const deleteSubmitting = ref(false)
-const pendingDeleteRegion = ref(null)
+const pendingDeleteRegion = ref<Region | null>(null)
 const deleteConfirmName = ref('')
 
 const deletePlaneCount = computed(() => pendingDeleteRegion.value?.plane_count || 0)
@@ -190,23 +192,23 @@ function showCreateDialog() {
   dialogVisible.value = true
 }
 
-function showEditDialog(row) {
+function showEditDialog(row: Region) {
   isEdit.value = true
   editId.value = row.id
   form.value = { name: row.name, description: row.description || '' }
   dialogVisible.value = true
 }
 
-function viewRegion(row) {
+function viewRegion(row: Region) {
   router.push(`/regions/${row.id}`)
 }
 
 async function handleSubmit() {
-  const valid = await formRef.value.validate().catch(() => false)
+  const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   submitting.value = true
   try {
-    if (isEdit.value) {
+    if (isEdit.value && editId.value) {
       await updateRegion(editId.value, form.value)
       ElMessage.success('更新成功')
     } else {
@@ -220,7 +222,7 @@ async function handleSubmit() {
   }
 }
 
-function openDeleteDialog(row) {
+function openDeleteDialog(row: Region) {
   pendingDeleteRegion.value = row
   deleteConfirmName.value = ''
   deleteDialogVisible.value = true

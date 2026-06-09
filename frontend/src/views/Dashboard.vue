@@ -114,24 +114,39 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { fetchStats } from '@/api/excel'
 import { Coin, MapLocation, Monitor, Connection as ConnectionIcon, Document } from '@element-plus/icons-vue'
+import { actionLabel, actionTag, entityTypeLabel as entityLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import type { SystemStats } from '@/types'
+
+type StatCardKey = 'total_regions' | 'total_plane_types' | 'total_region_planes' | 'total_change_logs'
+
+function createEmptyStats(): SystemStats {
+  return {
+    total_regions: 0,
+    total_plane_types: 0,
+    total_region_planes: 0,
+    total_change_logs: 0,
+    plane_by_scope: {},
+    plane_by_region: [],
+    recent_changes: [],
+  }
+}
 
 const loading = ref(false)
-const stats = ref({
-  total_regions: 0,
-  total_plane_types: 0,
-  total_region_planes: 0,
-  total_change_logs: 0,
-  plane_by_scope: {},
-  plane_by_region: [],
-  recent_changes: [],
-})
+const stats = ref<SystemStats>(createEmptyStats())
 
-const statCards = [
+const statCards: Array<{
+  key: StatCardKey
+  label: string
+  to: string
+  icon: typeof Monitor
+  gradient: string
+  accent: string
+}> = [
   {
     key: 'total_regions',
     label: 'Region 总数',
@@ -166,24 +181,9 @@ const statCards = [
   },
 ]
 
-function calcPercent(value, total) {
+function calcPercent(value: number, total: number) {
   if (!total) return 0
   return Math.round((value / total) * 100)
-}
-
-function entityLabel(t) {
-  const map = { region: 'Region', network_plane_type: '网络平面类型', region_network_plane: 'Region 网络平面' }
-  return map[t] || t
-}
-
-function actionTag(a) {
-  const map = { create: 'success', update: 'warning', delete: 'danger', import: 'primary' }
-  return map[a] || 'info'
-}
-
-function actionLabel(a) {
-  const map = { create: '创建', update: '更新', delete: '删除', import: '导入' }
-  return map[a] || a
 }
 
 onMounted(async () => {

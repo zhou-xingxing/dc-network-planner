@@ -5,6 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5%2B-42b883?style=flat-square&logo=vue.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.0%2B-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5.4%2B-646CFF?style=flat-square&logo=vite&logoColor=white)
 ![Element Plus](https://img.shields.io/badge/Element%20Plus-2.8%2B-409EFF?style=flat-square)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0%2B-D71F00?style=flat-square)
@@ -111,20 +112,21 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   │   └── restore_database.py           # 数据库恢复脚本
 │   └── start.sh                          # 后端启动脚本
 │
-├── frontend/                             # Vue 3 前端
+├── frontend/                             # Vue 3 + TypeScript 前端
 │   ├── public/
 │   ├── src/
-│   │   ├── main.js                       # 应用入口 (注册插件)
+│   │   ├── main.ts                       # 应用入口 (注册插件)
+│   │   ├── env.d.ts                      # Vite / Vue 类型声明
 │   │   ├── App.vue                       # 根组件
-│   │   ├── api/                          # Axios API 封装
-│   │   │   ├── request.js                # Axios 实例 + 拦截器
-│   │   │   ├── auth.js                   # 登录和当前用户 API
-│   │   │   ├── regions.js                # Region + 网络平面 API
-│   │   │   ├── networkPlaneTypes.js      # 网络平面类型 API
-│   │   │   ├── lookup.js                 # IP 查找 API
-│   │   │   ├── excel.js                  # Excel 导入/导出 + 统计 + 变更日志 API
-│   │   │   ├── users.js                  # 用户管理 API
-│   │   │   └── backup.js                 # 备份配置和执行 API
+│   │   ├── api/                          # Axios API 封装（TypeScript 类型化）
+│   │   │   ├── request.ts                # Axios 实例 + 拦截器
+│   │   │   ├── auth.ts                   # 登录和当前用户 API
+│   │   │   ├── regions.ts                # Region + 网络平面 API
+│   │   │   ├── networkPlaneTypes.ts      # 网络平面类型 API
+│   │   │   ├── lookup.ts                 # IP 查找 API
+│   │   │   ├── excel.ts                  # Excel 导入/导出 + 统计 + 变更日志 API
+│   │   │   ├── users.ts                  # 用户管理 API
+│   │   │   └── backup.ts                 # 备份配置和执行 API
 │   │   ├── assets/styles/
 │   │   │   └── main.css                  # 全局样式
 │   │   ├── components/
@@ -132,11 +134,12 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   │   │       ├── AppLayout.vue         # 布局组件 (侧边栏 + 顶栏 + 内容区)
 │   │   │       └── SideMenu.vue          # 侧边导航菜单
 │   │   ├── router/
-│   │   │   └── index.js                  # 路由定义（登录 + 9 个业务页面，懒加载）
+│   │   │   └── index.ts                  # 路由定义（登录 + 9 个业务页面，懒加载）
 │   │   ├── stores/
-│   │   │   └── app.js                    # Pinia 状态（登录态、当前用户、侧边栏）
+│   │   │   └── app.ts                    # Pinia 状态（登录态、当前用户、侧边栏）
+│   │   ├── types/                        # 前端业务类型定义
 │   │   ├── utils/
-│   │   │   └── time.js                   # 前端时间格式化
+│   │   │   └── time.ts                   # 前端时间格式化
 │   │   └── views/
 │   │       ├── Login.vue                 # 登录页
 │   │       ├── Dashboard.vue             # 仪表盘
@@ -151,7 +154,9 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 │   ├── index.html
 │   ├── package.json                      # NPM 依赖
 │   ├── package-lock.json                 # NPM 锁定依赖
-│   ├── vite.config.js                    # Vite 配置 (含 API 代理)
+│   ├── eslint.config.js                  # ESLint 配置
+│   ├── tsconfig.json                     # TypeScript 配置
+│   ├── vite.config.ts                    # Vite 配置 (含 API 代理)
 │   ├── .env.development                  # 开发环境变量
 │   ├── run_build.sh                      # 前端构建脚本
 │   └── start.sh                          # 前端启动脚本
@@ -254,6 +259,14 @@ npm install
 
 # 启动开发服务器
 npm run dev -- --host 0.0.0.0
+```
+
+前端改动提交前建议执行：
+
+```bash
+npm run lint
+npm run type-check
+npm run build
 ```
 
 启动验证：
@@ -408,7 +421,7 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 |---|---|---|
 | `lint` | ruff → black --check → mypy | 所有 push 和 PR |
 | `test-backend` | pytest tests/ -v | 所有 push 和 PR |
-| `build-frontend` | npm install → npm run build | 所有 push 和 PR |
+| `build-frontend` | npm install → npm run lint → npm run type-check → npm run build | 所有 push 和 PR |
 | `build-and-push` | Docker 构建并推送到 GHCR | main 分支 push 或 tag 推送 |
 
 ## 代码行数统计
@@ -418,9 +431,9 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 |---|---:|---:|
 | 后端代码 | 77 | 5,562 |
 | 后端测试 | 19 | 3,372 |
-| 前端代码 | 30 | 4,327 |
+| 前端代码 | 45 | 4,856 |
 | 前端测试 | 0 | 0 |
-| 合计 | 126 | 13,261 |
+| 合计 | 141 | 13,790 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

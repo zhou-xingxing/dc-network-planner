@@ -220,13 +220,27 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { downloadTemplate as downloadTemplateApi, previewImport, confirmImport as confirmImportApi, exportExcel } from '@/api/excel'
 import { fetchRegions } from '@/api/regions'
 import { ElMessage } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 import { useAppStore } from '@/stores/app'
 import { Download, Upload } from '@element-plus/icons-vue'
+import type { ExcelExportParams, ImportErrorType, ImportPreview, ImportResult, Region } from '@/types'
+
+interface InvolvedRegion {
+  name: string
+  label: string
+  tagType: string
+}
+
+interface InvolvedRegionState {
+  hasValid: boolean
+  hasInvalid: boolean
+  hasPermissionError: boolean
+}
 
 const appStore = useAppStore()
 const canImport = computed(
@@ -253,16 +267,16 @@ const importPermissionTip = computed(() => {
 const activeTab = ref('import')
 
 const downloading = ref(false)
-const selectedFile = ref(null)
+const selectedFile = ref<File | null>(null)
 const previewLoading = ref(false)
-const previewData = ref(null)
+const previewData = ref<ImportPreview | null>(null)
 const importing = ref(false)
-const importResult = ref(null)
-const uploadRef = ref(null)
+const importResult = ref<ImportResult | null>(null)
+const uploadRef = ref()
 
-const regions = ref([])
+const regions = ref<Region[]>([])
 const exporting = ref(false)
-const exportForm = ref({ region_id: '' })
+const exportForm = ref<ExcelExportParams>({ region_id: '' })
 const confirmImportDisabled = computed(() => (previewData.value?.valid_rows || 0) === 0 || !canImport.value)
 const confirmImportDisabledTip = computed(() => {
   if (!previewData.value) return ''
@@ -270,9 +284,9 @@ const confirmImportDisabledTip = computed(() => {
   if (previewData.value.valid_rows === 0) return '没有可确认导入的有效行'
   return ''
 })
-const involvedRegions = computed(() => {
+const involvedRegions = computed<InvolvedRegion[]>(() => {
   if (!previewData.value) return []
-  const regionMap = new Map()
+  const regionMap = new Map<string, InvolvedRegionState>()
   for (const row of previewData.value.rows || []) {
     const current = regionMap.get(row.region_name)
     regionMap.set(row.region_name, { hasValid: true, hasInvalid: Boolean(current?.hasInvalid), hasPermissionError: false })
@@ -296,7 +310,7 @@ const involvedRegions = computed(() => {
     })
 })
 
-function errorTypeMeta(errorType) {
+function errorTypeMeta(errorType: ImportErrorType) {
   if (errorType === 'permission') return { label: '权限', tagType: 'danger' }
   if (errorType === 'business') return { label: '业务', tagType: 'warning' }
   return { label: '校验', tagType: 'danger' }
@@ -317,8 +331,8 @@ async function downloadTemplate() {
   }
 }
 
-function onFileChange(uploadFile) {
-  selectedFile.value = uploadFile.raw
+function onFileChange(uploadFile: UploadFile) {
+  selectedFile.value = uploadFile.raw ?? null
   previewData.value = null
   importResult.value = null
 }
@@ -337,8 +351,9 @@ async function confirmImport() {
   if (!previewData.value) return
   importing.value = true
   try {
-    importResult.value = await confirmImportApi(previewData.value.preview_id)
-    if (importResult.value.imported_count === 0 && importResult.value.error_count > 0) {
+    const result = await confirmImportApi(previewData.value.preview_id)
+    importResult.value = result
+    if (result.imported_count === 0 && result.error_count > 0) {
       ElMessage.warning('所有行导入失败')
     }
   } finally {
@@ -355,7 +370,7 @@ function resetImport() {
 async function handleExport() {
   exporting.value = true
   try {
-    const params = {}
+    const params: ExcelExportParams = {}
     if (exportForm.value.region_id) params.region_id = exportForm.value.region_id
     const blob = await exportExcel(params)
     const url = URL.createObjectURL(blob)

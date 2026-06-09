@@ -80,16 +80,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { lookupIP } from '@/api/lookup'
 import { Search } from '@element-plus/icons-vue'
+import type { LookupResult } from '@/types'
 
 const query = ref('')
 const exact = ref(true)
 const searching = ref(false)
 const searched = ref(false)
-const results = ref([])
+const results = ref<LookupResult[]>([])
 const total = ref(0)
 
 async function handleSearch() {
@@ -100,7 +101,7 @@ async function handleSearch() {
     const res = await lookupIP(query.value.trim(), exact.value)
     results.value = res.results || []
     total.value = res.total || 0
-  } catch (e) {
+  } catch {
     results.value = []
     total.value = 0
   } finally {

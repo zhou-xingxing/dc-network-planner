@@ -126,9 +126,10 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import {
   User,
   Location,
@@ -145,7 +146,7 @@ const appStore = useAppStore()
 const loading = ref(false)
 const passwordDialogVisible = ref(false)
 const passwordSubmitting = ref(false)
-const passwordFormRef = ref()
+const passwordFormRef = ref<FormInstance>()
 const passwordForm = reactive({
   current_password: '',
   new_password: '',
@@ -167,7 +168,7 @@ const passwordRules = {
   confirm_password: [
     { required: true, message: '请再次输入新密码', trigger: 'blur' },
     {
-      validator: (_rule, value, callback) => {
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
         if (value !== passwordForm.new_password) {
           callback(new Error('两次输入的新密码不一致'))
           return

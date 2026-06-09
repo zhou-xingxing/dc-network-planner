@@ -149,28 +149,30 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { fetchBackupConfig, fetchBackupRecords, runBackup, updateBackupConfig } from '@/api/backup'
 import { useAppStore } from '@/stores/app'
 import { Check, FolderChecked, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { formatDateTime } from '@/utils/time'
 import { computed, onMounted, reactive, ref } from 'vue'
+import type { BackupConfig, BackupConfigUpdatePayload, BackupMethod, BackupRecord } from '@/types'
 
 const loading = ref(false)
 const appStore = useAppStore()
 const saving = ref(false)
 const running = ref(false)
 const recordsLoading = ref(false)
-const config = ref(null)
+const config = ref<BackupConfig | null>(null)
 const secretConfigured = ref(false)
-const formRef = ref(null)
-const records = ref([])
+const formRef = ref<FormInstance>()
+const records = ref<BackupRecord[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
 
-const form = reactive({
+const form = reactive<BackupConfigUpdatePayload>({
   enabled: false,
   cron_expression: '0 2 * * *',
   backup_file_prefix: 'dc_network_planner_data_backup_',
@@ -210,7 +212,7 @@ const rules = computed(() => ({
   bucket: form.method === 'object_storage' ? [{ required: true, message: '请输入 Bucket', trigger: 'blur' }] : [],
 }))
 
-function applyConfig(data) {
+function applyConfig(data: BackupConfig) {
   config.value = data
   secretConfigured.value = data.secret_key_configured
   form.enabled = data.enabled
@@ -238,7 +240,7 @@ async function handleSave() {
   await formRef.value?.validate()
   saving.value = true
   try {
-    const payload = { ...form }
+    const payload: BackupConfigUpdatePayload = { ...form }
     payload.cron_expression = payload.cron_expression.trim()
     payload.backup_file_prefix = payload.backup_file_prefix.trim()
     if (payload.method === 'local') {
@@ -284,22 +286,22 @@ async function loadRecords() {
   }
 }
 
-function formatDate(value) {
+function formatDate(value?: string | null) {
   return formatDateTime(value)
 }
 
-function formatSize(value) {
+function formatSize(value?: number | null) {
   if (!value) return '-'
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
-function methodText(value) {
+function methodText(value: BackupMethod | string) {
   return value === 'object_storage' ? '对象存储' : '本地文件'
 }
 
-function statusText(value) {
+function statusText(value: string) {
   if (value === 'success') return '成功'
   if (value === 'failed') return '失败'
   return '执行中'

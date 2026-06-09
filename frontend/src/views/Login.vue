@@ -24,17 +24,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { login } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 const appStore = useAppStore()
-const formRef = ref()
+const formRef = ref<FormInstance>()
 const loading = ref(false)
 const form = reactive({ username: '', password: '' })
 const rules = {
@@ -51,7 +52,8 @@ async function handleLogin() {
     const result = await login(form.username, form.password)
     appStore.setSession(result.access_token, result.user)
     ElMessage.success('登录成功')
-    router.push(route.query.redirect || '/dashboard')
+    const redirect = Array.isArray(route.query.redirect) ? route.query.redirect[0] : route.query.redirect
+    router.push(redirect || '/dashboard')
   } finally {
     loading.value = false
   }

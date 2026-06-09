@@ -175,31 +175,62 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getRegion, createRegionPlane, updateRegionPlane, deleteRegionPlane } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { ArrowLeft, Edit, Delete, Connection, InfoFilled, Plus } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
+import { buildPlaneTypeTree } from '@/utils/tree'
+import type {
+  EntityId,
+  NetworkPlaneType,
+  RegionDetail as RegionDetailData,
+  RegionPlane,
+  RegionPlaneCreatePayload,
+  RegionPlaneUpdatePayload,
+} from '@/types'
 
-const props = defineProps({ id: String })
+interface PlaneForm {
+  plane_type_id: EntityId | ''
+  scope: string
+  cidr: string
+  vlan_id: string
+  gateway_position: string
+  gateway_ip: string
+}
+
+function createEmptyRegion(): RegionDetailData {
+  return {
+    id: '',
+    name: '',
+    description: '',
+    plane_count: 0,
+    created_at: '',
+    updated_at: '',
+    planes: [],
+  }
+}
+
+const props = defineProps<{ id: EntityId }>()
 const router = useRouter()
 const appStore = useAppStore()
 
 const loading = ref(false)
-const region = ref({ name: '', planes: [] })
+const region = ref<RegionDetailData>(createEmptyRegion())
 
 // ---- 平面相关状态 ----
-const availablePlaneTypes = ref([])
+const availablePlaneTypes = ref<NetworkPlaneType[]>([])
 const planeDialogVisible = ref(false)
 const planeSubmitting = ref(false)
-const planeFormRef = ref(null)
+const planeFormRef = ref<FormInstance>()
 const planeForm = ref(createEmptyPlaneForm())
 const isEditPlane = ref(false)
-const editingPlaneId = ref('')
+const editingPlaneId = ref<EntityId | ''>('')
 
 // ---- 计算属性 ----
 const planeTree = computed(() => region.value.planes || [])
@@ -224,7 +255,7 @@ async function fetchPlanes() {
 
 // ---------- 平面操作 ----------
 
-function createEmptyPlaneForm() {
+function createEmptyPlaneForm(): PlaneForm {
   return {
     plane_type_id: '',
     scope: 'Global',
@@ -235,35 +266,7 @@ function createEmptyPlaneForm() {
   }
 }
 
-function buildPlaneTypeTree(sourceItems) {
-  const itemMap = new Map()
-  for (const item of sourceItems) {
-    itemMap.set(item.id, { ...item, children: [], level: 1 })
-  }
-
-  const roots = []
-  for (const item of sourceItems) {
-    const node = itemMap.get(item.id)
-    const parent = item.parent_id ? itemMap.get(item.parent_id) : null
-    if (parent) {
-      parent.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  }
-
-  markPlaneTypeLevel(roots)
-  return roots
-}
-
-function markPlaneTypeLevel(nodes, level = 1) {
-  for (const node of nodes) {
-    node.level = level
-    markPlaneTypeLevel(node.children, level + 1)
-  }
-}
-
-function validateOptionalVlanId(rule, value, callback) {
+function validateOptionalVlanId(_rule: unknown, value: string, callback: (error?: Error) => void) {
   if (!value) {
     callback()
     return
@@ -287,7 +290,7 @@ async function showPlaneDialog() {
   planeFormRef.value?.clearValidate()
 }
 
-async function showEditPlaneDialog(row) {
+async function showEditPlaneDialog(row: RegionPlane) {
   isEditPlane.value = true
   editingPlaneId.value = row.id
   planeForm.value = {
@@ -312,20 +315,25 @@ function resetPlaneForm() {
 }
 
 async function submitPlaneForm() {
-  const valid = await planeFormRef.value.validate().catch(() => false)
+  const valid = await planeFormRef.value?.validate().catch(() => false)
   if (!valid) return
   planeSubmitting.value = true
   try {
-    const payload = {
+    const payload: RegionPlaneUpdatePayload = {
       scope: planeForm.value.scope || 'Global',
       cidr: planeForm.value.cidr,
       vlan_id: planeForm.value.vlan_id ? Number(planeForm.value.vlan_id) : null,
       gateway_position: planeForm.value.gateway_position || null,
       gateway_ip: planeForm.value.gateway_ip || null,
     }
+    const createPayload: RegionPlaneCreatePayload = {
+      ...payload,
+      plane_type_id: planeForm.value.plane_type_id,
+      cidr: planeForm.value.cidr,
+    }
     const result = isEditPlane.value
       ? await updateRegionPlane(props.id, editingPlaneId.value, payload)
-      : await createRegionPlane(props.id, { ...payload, plane_type_id: planeForm.value.plane_type_id })
+      : await createRegionPlane(props.id, createPayload)
     ElMessage.success(isEditPlane.value ? '网络平面已更新' : '网络平面已添加')
     if (result.gateway_ip_warning) {
       ElMessage.warning(result.gateway_ip_warning)
@@ -333,7 +341,7 @@ async function submitPlaneForm() {
     planeDialogVisible.value = false
     await fetchRegion()
     await fetchPlanes()
-  } catch (e) {
+  } catch {
     // Error handled by Axios interceptor
   } finally {
     planeSubmitting.value = false
@@ -349,7 +357,7 @@ function fillRecommendedGatewayIp() {
   }
 }
 
-function recommendedGatewayIp(cidr, isPrivate) {
+function recommendedGatewayIp(cidr: string, isPrivate: boolean) {
   const [ip, prefixText] = cidr.trim().split('/')
   const prefix = Number(prefixText)
   if (!isValidIpv4(ip) || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) return ''
@@ -364,7 +372,7 @@ function recommendedGatewayIp(cidr, isPrivate) {
   return numberToIpv4(prefix < 31 ? broadcast - 1 : broadcast)
 }
 
-function isValidIpv4(ip) {
+function isValidIpv4(ip: string) {
   const parts = ip.split('.')
   return parts.length === 4 && parts.every(part => {
     if (!/^\d+$/.test(part)) return false
@@ -373,28 +381,28 @@ function isValidIpv4(ip) {
   })
 }
 
-function ipv4ToNumber(ip) {
-  return ip.split('.').reduce((acc, part) => ((acc << 8) + Number(part)) >>> 0, 0)
+function ipv4ToNumber(ip: string) {
+  return ip.split('.').reduce((acc: number, part: string) => ((acc << 8) + Number(part)) >>> 0, 0)
 }
 
-function numberToIpv4(value) {
-  return [24, 16, 8, 0].map(shift => (value >>> shift) & 255).join('.')
+function numberToIpv4(value: number) {
+  return [24, 16, 8, 0].map((shift: number) => (value >>> shift) & 255).join('.')
 }
 
-async function deletePlane(planeId) {
+async function deletePlane(planeId: EntityId) {
   try {
     await deleteRegionPlane(props.id, planeId)
     ElMessage.success('网络平面已删除')
     await fetchRegion()
     await fetchPlanes()
-  } catch (e) { /* handled */ }
+  } catch { /* handled */ }
 }
 
 // ---------- Region 操作 ----------
 
 function editRegion() {
   ElMessageBox.prompt('Region 名称', '编辑 Region', { inputValue: region.value.name, inputPattern: /.+/, inputErrorMessage: '名称不能为空' })
-    .then(async ({ value }) => {
+    .then(async ({ value }: { value: string }) => {
       const { updateRegion: updateRegionApi } = await import('@/api/regions')
       await updateRegionApi(props.id, { name: value })
       ElMessage.success('更新成功')

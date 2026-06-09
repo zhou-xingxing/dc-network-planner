@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar-wrapper">
+  <div class="sidebar-wrapper" :class="{ 'is-collapsed': appStore.sidebarCollapsed }">
     <div class="sidebar-header">
       <div class="logo-icon">
         <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
@@ -20,7 +20,7 @@
     <el-menu
       :default-active="activeMenu"
       router
-      :collapse="false"
+      :collapse="appStore.sidebarCollapsed"
       background-color="transparent"
       text-color="var(--color-text-sidebar)"
       active-text-color="var(--color-text-sidebar-active)"
@@ -66,7 +66,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import {
   Clock,
@@ -114,6 +114,8 @@ const activeMenu = computed(() => route.path)
   display: flex;
   flex-direction: column;
   line-height: 1.3;
+  min-width: 0;
+  transition: opacity var(--transition-fast);
 }
 
 .logo-title {
@@ -139,12 +141,32 @@ const activeMenu = computed(() => route.path)
   letter-spacing: 1.5px;
   color: var(--color-text-sidebar);
   opacity: 0.4;
+  transition: opacity var(--transition-fast);
 }
 
 /* ---- Menu ---- */
 .sidebar-menu {
   flex: 1;
   border-right: none !important;
+  padding: 0 8px;
+}
+
+.sidebar-menu:not(.el-menu--collapse) {
+  width: 100%;
+}
+
+.sidebar-wrapper.is-collapsed .sidebar-header {
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.sidebar-wrapper.is-collapsed .logo-text,
+.sidebar-wrapper.is-collapsed .nav-section-label,
+.sidebar-wrapper.is-collapsed .sidebar-footer {
+  display: none;
+}
+
+.sidebar-wrapper.is-collapsed .sidebar-menu {
   padding: 0 8px;
 }
 

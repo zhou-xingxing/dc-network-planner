@@ -1,9 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteRecordRaw } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { fetchCurrentUser } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 
-const routes = [
+declare module 'vue-router' {
+  interface RouteMeta {
+    public?: boolean
+    title?: string
+    adminOnly?: boolean
+  }
+}
+
+const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
@@ -89,7 +98,8 @@ router.beforeEach(async (to) => {
   const appStore = useAppStore()
   if (to.meta.public) {
     if (to.path === '/login' && appStore.isAuthenticated) {
-      return to.query.redirect || '/dashboard'
+      const redirect = Array.isArray(to.query.redirect) ? to.query.redirect[0] : to.query.redirect
+      return redirect || '/dashboard'
     }
     return true
   }

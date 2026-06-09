@@ -27,7 +27,9 @@
 | 时区处理 | zoneinfo | Python 内置 | 使用 IANA 时区名解释业务时间 |
 | IP 处理 | ipaddress | Python 内置 | 标准库，CIDR 解析与重叠检测 |
 | 前端框架 | Vue 3 | 3.5+ | Composition API，体积小，生态丰富 |
+| 前端语言 | TypeScript | 6.0+ | 为 API 响应、表单和页面状态提供静态类型约束 |
 | 前端构建 | Vite | 5.4+ | 极速 HMR，开箱即用 |
+| 前端质量检查 | ESLint | 9.x | Vue/TypeScript 代码质量检查 |
 | UI 组件库 | Element Plus | 2.8+ | 中文友好，表格/表单/对话框组件丰富 |
 | 状态管理 | Pinia | 2.2+ | Vue 3 官方推荐状态管理 |
 | HTTP 客户端 | Axios | 1.7+ | 拦截器、请求/响应转换 |
@@ -37,7 +39,7 @@
 
 ```mermaid
 graph TB
-    subgraph Frontend["前端 (Vue 3 + Vite)"]
+    subgraph Frontend["前端 (Vue 3 + TypeScript + Vite)"]
         direction TB
         FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 个人主页 · 用户管理"]
         FE_Axios["Axios / REST API<br/>自动注入 Authorization: Bearer token"]
@@ -73,14 +75,15 @@ graph TB
 
 ### 3.2 前端组件架构
 
-前端采用 Vue 3 Composition API + Vue Router 组织页面：
+前端采用 Vue 3 Composition API + TypeScript + Vue Router 组织页面：
 
 - **App.vue** - 根组件，仅包含 `<router-view />`
 - **AppLayout.vue** - 布局组件，包含侧边栏导航 + 顶栏（面包屑 + 当前用户入口 + 退出登录）+ 内容区
 - **views/** - 页面组件，每个对应一个路由
-- **api/** - Axios 请求封装模块，按业务领域拆分
+- **api/** - Axios 请求封装模块，按业务领域拆分，请求参数和响应数据使用 TypeScript 类型约束
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
+- **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、备份、导入导出和统计响应
 
 ## 4. 数据模型设计
 
@@ -847,8 +850,9 @@ docker run -d --name dc-network-planner-frontend -p 80:80 \
 2. **数据库持久化**：后端通过 `DATABASE_URL` 将数据库路径指向 `/app/data/`，通过 Docker volume 或 bind mount 持久化
 3. **前端代理**：Nginx 在容器启动时通过 `BACKEND_URL` 环境变量（envsubst）配置后端代理地址，支持运行时配置无需重新构建
 4. **健康检查**：后端配置 `HEALTHCHECK` 确保服务可用后才接受流量
-5. **构建缓存**：`requirements.txt` 和 `package.json` 在源码之前复制，利用 Docker 层缓存加速重复构建
-6. **启动管理员**：首次启动且 `users` 表为空时，后端会按 `BOOTSTRAP_ADMIN_*` 创建初始 administrator；生产环境必须覆盖默认密码和 `JWT_SECRET_KEY`
+5. **构建缓存与可重复安装**：`requirements.txt`、`package.json` 和 `package-lock.json` 在源码之前复制；前端镜像使用 `npm ci` 按锁定依赖安装
+6. **前端构建门禁**：前端 Docker builder 阶段执行 `npm run lint && npm run type-check && npm run build`，保证镜像构建与本地/CI 的基础检查一致
+7. **启动管理员**：首次启动且 `users` 表为空时，后端会按 `BOOTSTRAP_ADMIN_*` 创建初始 administrator；生产环境必须覆盖默认密码和 `JWT_SECRET_KEY`
 
 ## 9. CI/CD 设计
 
@@ -859,7 +863,7 @@ graph TB
     Push["代码推送（git push）"] --> GHA["GitHub Actions"]
     GHA --> Lint["lint<br/>ruff 检查<br/>black --check<br/>mypy 检查"]
     GHA --> Test["test-backend<br/>pytest 53 项<br/>SQLite 内存"]
-    GHA --> Build["build-frontend<br/>npm build<br/>编译检查"]
+    GHA --> Build["build-frontend<br/>npm lint<br/>type-check<br/>build"]
     Lint --> Publish["build-and-push<br/>Docker buildx<br/>ghcr.io 推送"]
     Test --> Publish
     Build --> Publish
@@ -885,8 +889,8 @@ graph TB
    - pip 缓存加速重复运行
    - 每个测试用例独立内存 SQLite 数据库，互不干扰
 
-3. **build-frontend** — Node 20, `npm install && npm run build`
-   - 仅验证编译是否通过
+3. **build-frontend** — Node 20, `npm install && npm run lint && npm run type-check && npm run build`
+   - 验证 ESLint、TypeScript 类型检查和前端编译是否通过
    - MVP 阶段前端逻辑简单，不编写单元测试
 
 4. **build-and-push** — 依赖 lint + test-backend + build-frontend 三个 Job 成功

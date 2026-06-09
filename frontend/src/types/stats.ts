@@ -8,6 +8,7 @@ export interface PlaneByRegionStat {
 export interface RecentChangeStat {
   id: EntityId
   entity_type: string
+  entity_name?: string | null
   action: string
   operator: string
   summary: string

@@ -126,6 +126,7 @@ def create_region(db: Session, data: RegionCreate, operator: str) -> Region:
         db,
         entity_type="region",
         entity_id=region.id,
+        entity_name=region.name,
         action="create",
         operator=operator,
         new_value=region.name,
@@ -151,6 +152,7 @@ def update_region(db: Session, region_id: str, data: RegionUpdate, operator: str
     region = get_region(db, region_id)
     if not region:
         return None
+    entity_name = region.name
     changes = {}
     if data.name is not None and data.name != region.name:
         existing = db.query(Region).filter(Region.name == data.name, Region.id != region_id).first()
@@ -167,6 +169,7 @@ def update_region(db: Session, region_id: str, data: RegionUpdate, operator: str
                 db,
                 entity_type="region",
                 entity_id=region_id,
+                entity_name=entity_name,
                 action="update",
                 field_name=field,
                 old_value=str(old),
@@ -210,6 +213,7 @@ def delete_region(db: Session, region_id: str, operator: str) -> bool:
         db,
         entity_type="region",
         entity_id=region_id,
+        entity_name=region.name,
         action="delete",
         operator=operator,
         old_value=old_value,

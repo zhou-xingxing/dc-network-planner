@@ -44,6 +44,11 @@
             {{ entityTypeLabel(row.entity_type) }}
           </template>
         </el-table-column>
+        <el-table-column prop="entity_name" label="变更对象" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.entity_name || '未记录' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="action" label="操作" width="80">
           <template #default="{ row }">
             <el-tag :type="actionTag(row.action)" size="small" effect="plain">{{ actionLabel(row.action) }}</el-tag>

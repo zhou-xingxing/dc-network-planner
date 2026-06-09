@@ -1,5 +1,8 @@
 """系统统计接口测试。"""
 
+from app.models.change_log import ChangeLog
+from app.services.stats import _build_summary
+
 
 def test_stats_scope_distribution_orders_public_before_private(client, admin_headers, user_headers_factory):
     """公网/私网分布固定按非私网、私网顺序返回。"""
@@ -42,3 +45,16 @@ def test_stats_region_distribution_orders_by_region_name(client, admin_headers):
     assert response.status_code == 200
     names = [item["region_name"] for item in response.json()["plane_by_region"]]
     assert names == ["Region-A", "Region-B"]
+
+
+def test_build_summary_fallback_includes_entity_name():
+    """未知操作摘要回退时仍应展示具体变更对象。"""
+    change_log = ChangeLog(
+        entity_type="network_plane_type",
+        entity_id="plane-type-1",
+        entity_name="业务平面",
+        action="backup",
+        operator="admin",
+    )
+
+    assert _build_summary(change_log) == "backup network_plane_type 业务平面"

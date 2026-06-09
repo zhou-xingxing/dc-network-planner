@@ -4,6 +4,7 @@ export interface ChangeLog {
   id: EntityId
   entity_type: string
   entity_id: EntityId
+  entity_name?: string | null
   action: string
   field_name?: string | null
   old_value?: string | null

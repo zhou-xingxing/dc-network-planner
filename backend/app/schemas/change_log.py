@@ -9,6 +9,7 @@ class ChangeLogResponse(BaseModel):
     id: str
     entity_type: str
     entity_id: str
+    entity_name: Optional[str] = None
     action: str
     field_name: Optional[str] = None
     old_value: Optional[str] = None

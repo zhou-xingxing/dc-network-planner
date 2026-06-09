@@ -43,6 +43,7 @@ def list_change_logs(
                 id=cl.id,
                 entity_type=cl.entity_type,
                 entity_id=cl.entity_id,
+                entity_name=cl.entity_name,
                 action=cl.action,
                 field_name=cl.field_name,
                 old_value=cl.old_value,

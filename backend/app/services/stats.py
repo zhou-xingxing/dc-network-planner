@@ -43,6 +43,7 @@ def get_system_stats(db: Session) -> dict[str, Any]:
         {
             "id": change_log.id,
             "entity_type": change_log.entity_type,
+            "entity_name": change_log.entity_name,
             "action": change_log.action,
             "operator": change_log.operator,
             "summary": _build_summary(change_log),
@@ -64,15 +65,16 @@ def get_system_stats(db: Session) -> dict[str, Any]:
 
 def _build_summary(change_log: ChangeLog) -> str:
     """生成概览页最近变更摘要。"""
+    target = f"{change_log.entity_type} {change_log.entity_name}" if change_log.entity_name else change_log.entity_type
     if change_log.action == "create":
-        return f"创建了 {change_log.entity_type}: {change_log.new_value or ''}"
+        return f"创建了 {target}: {change_log.new_value or ''}"
     if change_log.action == "update":
         return (
-            f"更新了 {change_log.entity_type} {change_log.field_name or ''}: "
+            f"更新了 {target} {change_log.field_name or ''}: "
             f"{change_log.old_value or ''} -> {change_log.new_value or ''}"
         )
     if change_log.action == "delete":
-        return f"删除了 {change_log.entity_type}: {change_log.old_value or ''}"
+        return f"删除了 {target}: {change_log.old_value or ''}"
     if change_log.action == "import":
         return f"批量导入网络平面: {change_log.new_value or ''}"
-    return f"{change_log.action} {change_log.entity_type}"
+    return f"{change_log.action} {target}"

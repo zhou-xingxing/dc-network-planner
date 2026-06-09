@@ -194,6 +194,7 @@ def create_plane_for_region(
         db,
         entity_type="region_network_plane",
         entity_id=rp.id,
+        entity_name=_format_plane_ref(rp),
         action="create",
         operator=operator,
         new_value=(
@@ -257,6 +258,7 @@ def update_plane_for_region(
         return None
     if not plane.plane_type:
         raise BusinessError("网络平面类型不存在")
+    entity_name = _format_plane_ref(plane)
 
     new_scope = normalize_plane_scope(scope if scope is not None else plane.scope)
     new_cidr = cidr if cidr is not None else plane.cidr
@@ -312,6 +314,7 @@ def update_plane_for_region(
                 db,
                 entity_type="region_network_plane",
                 entity_id=plane_id,
+                entity_name=entity_name,
                 action="update",
                 field_name=field,
                 old_value=old,
@@ -383,6 +386,7 @@ def delete_plane_for_region(db: Session, region_id: str, plane_id: str, operator
         db,
         entity_type="region_network_plane",
         entity_id=plane_id,
+        entity_name=_format_plane_ref(plane),
         action="delete",
         operator=operator,
         old_value=_format_plane_ref(plane),

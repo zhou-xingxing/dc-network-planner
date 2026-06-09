@@ -47,6 +47,7 @@ def log_change(
     entity_id: str,
     action: str,
     operator: str,
+    entity_name: Optional[str] = None,
     field_name: Optional[str] = None,
     old_value: Optional[str] = None,
     new_value: Optional[str] = None,
@@ -60,6 +61,7 @@ def log_change(
         entity_id: 实体 ID。
         action: 操作类型（create、update、delete、import）。
         operator: 操作者名称。
+        entity_name: 面向用户展示的变更对象名称快照。
         field_name: 变更的字段名（update 操作时）。
         old_value: 变更前的值。
         new_value: 变更后的值。
@@ -71,6 +73,7 @@ def log_change(
     entry = ChangeLog(
         entity_type=entity_type,
         entity_id=entity_id,
+        entity_name=entity_name,
         action=action,
         field_name=field_name,
         old_value=old_value,

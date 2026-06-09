@@ -109,6 +109,7 @@ def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> Netw
         db,
         entity_type="network_plane_type",
         entity_id=pt.id,
+        entity_name=pt.name,
         action="create",
         operator=operator,
         new_value=f"name={pt.name}, parent={_format_parent_name(parent)}",
@@ -131,6 +132,7 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
     pt = get_plane_type(db, pt_id)
     if not pt:
         return None
+    entity_name = pt.name
     changes = {}
     if data.name is not None and data.name != pt.name:
         changes["name"] = (pt.name, data.name)
@@ -168,6 +170,7 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
                 db,
                 entity_type="network_plane_type",
                 entity_id=pt_id,
+                entity_name=entity_name,
                 action="update",
                 field_name=field,
                 old_value=str(old),
@@ -208,6 +211,7 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
         db,
         entity_type="network_plane_type",
         entity_id=pt_id,
+        entity_name=pt.name,
         action="delete",
         operator=operator,
         old_value=pt.name,
@@ -278,6 +282,7 @@ def _sync_descendant_privacy(db: Session, pt: NetworkPlaneType, is_private: bool
             db,
             entity_type="network_plane_type",
             entity_id=child.id,
+            entity_name=child.name,
             action="update",
             field_name="is_private",
             old_value=str(child.is_private),

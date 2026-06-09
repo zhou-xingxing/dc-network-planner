@@ -150,6 +150,7 @@ erDiagram
         string id PK
         string entity_type
         string entity_id
+        string entity_name
         string action
         string field_name
         text   old_value
@@ -275,6 +276,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | id | String(36) UUID | PK | UUID v4 |
 | entity_type | String(50) | NOT NULL, INDEX | 实体类型 |
 | entity_id | String(36) | NOT NULL, INDEX | 实体 ID |
+| entity_name | String(255) | NULLABLE | 面向用户展示的变更对象名称快照 |
 | action | String(20) | NOT NULL | create/update/delete/import |
 | field_name | String(100) | NULLABLE | update 时记录字段名 |
 | old_value | Text | NULLABLE | JSON 或纯文本 |
@@ -283,7 +285,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | comment | Text | NULLABLE | 备注 |
 | created_at | DateTime | NOT NULL, INDEX | 创建时间 |
 
-**设计决策**：显式服务层变更日志记录，而非 SQLAlchemy 事件监听。Service 在每次 mutate 操作后调用 `log_change()`，更可控、可测试。`entity_id` 保留 UUID 作为内部关联和筛选键；面向用户展示的 `old_value`、`new_value`、`comment` 必须优先记录 Region 名称、网络平面类型名称、作用域、CIDR 等可读业务描述，不直接暴露外键 UUID。
+**设计决策**：显式服务层变更日志记录，而非 SQLAlchemy 事件监听。Service 在每次 mutate 操作后调用 `log_change()`，更可控、可测试。`entity_id` 保留 UUID 作为内部关联和筛选键；`entity_name` 记录变更发生时的用户可读对象名称快照，用于展示“改的是哪个对象”，不依赖当前业务表实时联查；面向用户展示的 `old_value`、`new_value`、`comment` 必须优先记录 Region 名称、网络平面类型名称、作用域、CIDR 等可读业务描述，不直接暴露外键 UUID。
 
 #### backup_configs
 
@@ -603,7 +605,7 @@ flowchart TD
 
 **理由**：事件监听器需要额外的 `session.info` 传递操作者上下文，且隐含行为难以调试。Service 层方式是显式的、可单元测试的。
 
-**展示约束**：变更日志表中的 `entity_id` 只用于内部定位；写入 `old_value`、`new_value`、`comment` 时应把 Region、父级网络平面类型、Region 网络平面实例等外键转成用户可识别的名称或业务描述。
+**展示约束**：变更日志表中的 `entity_id` 只用于内部定位；`entity_name` 必须写入当前变更对象的用户可读名称或业务描述，例如 Region 名称、网络平面类型名称、Region 网络平面实例描述。写入 `old_value`、`new_value`、`comment` 时也应把 Region、父级网络平面类型、Region 网络平面实例等外键转成用户可识别的名称或业务描述。
 
 ### 6.5 UUID 主键
 

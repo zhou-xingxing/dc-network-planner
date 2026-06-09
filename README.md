@@ -419,10 +419,9 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 
 | Job | 内容 | 触发条件 |
 |---|---|---|
-| `lint` | ruff → black --check → mypy | 所有 push 和 PR |
-| `test-backend` | pytest tests/ -v | 所有 push 和 PR |
-| `build-frontend` | npm install → npm run lint → npm run type-check → npm run build | 所有 push 和 PR |
-| `build-and-push` | Docker 构建并推送到 GHCR | main 分支 push 或 tag 推送 |
+| `backend-check` | 创建 Python venv → 安装依赖 → make check | 所有 push 和 PR |
+| `build-frontend` | npm ci → npm run lint → npm run type-check → npm run build | 所有 push 和 PR |
+| `docker-build` | Docker 构建验证；main 分支 push 或 tag 推送时同步推送到 GHCR | 所有 push 和 PR |
 
 ## 代码行数统计
 

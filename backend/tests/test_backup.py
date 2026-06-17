@@ -13,7 +13,7 @@ import app.services.backup as backup_service
 from app.exceptions import BusinessError
 from app.models.backup import BackupConfig, BackupRecord
 from app.models.region import Region
-from app.schemas.backup import BackupConfigUpdate
+from app.schemas.backup import BACKUP_FILE_PREFIX_MAX_LENGTH, BackupConfigUpdate
 from app.services.backup import calculate_next_run, run_due_backup, utcnow
 
 
@@ -138,6 +138,23 @@ def test_update_backup_config_validates_backup_file_prefix(client, tmp_path, adm
 
     assert response.status_code == 409
     assert "路径分隔符" in response.json()["detail"]
+
+
+def test_update_backup_config_rejects_too_long_backup_file_prefix(client, tmp_path, admin_headers):
+    """备份文件名前缀超过长度上限时应被请求模型拒绝。"""
+    response = client.put(
+        "/api/backup/config",
+        headers=admin_headers,
+        json={
+            "enabled": True,
+            "cron_expression": "0 2 * * *",
+            "backup_file_prefix": "b" * (BACKUP_FILE_PREFIX_MAX_LENGTH + 1),
+            "method": "local",
+            "local_path": str(tmp_path),
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_update_backup_config_invalid_prefix_is_rejected_before_database_query(tmp_path):
@@ -347,7 +364,46 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
     target = Path(data["target"])
     assert target.exists()
     assert target.parent == tmp_path
-    assert re.fullmatch(r"dc_\d{14}", target.name)
+    assert re.fullmatch(rf"dc_\d{{14}}_{re.escape(data['id'])}", target.name)
+
+
+def test_run_backup_uses_record_id_to_avoid_same_second_filename_collision(
+    client,
+    tmp_path,
+    monkeypatch,
+    admin_headers,
+):
+    """同一秒内多次备份应通过备份记录 ID 生成不同文件名。"""
+    fixed_now = datetime(2026, 6, 17, 12, 30, tzinfo=timezone.utc)
+    # 固定备份服务取到的当前时间，稳定复现同一秒内连续备份的场景。
+    monkeypatch.setattr(backup_service, "utcnow", lambda: fixed_now)
+    config_response = client.put(
+        "/api/backup/config",
+        headers=admin_headers,
+        json={
+            "enabled": False,
+            "cron_expression": "30 2 * * *",
+            "backup_file_prefix": "dc_",
+            "method": "local",
+            "local_path": str(tmp_path),
+        },
+    )
+    assert config_response.status_code == 200
+
+    first_response = client.post("/api/backup/run", headers=admin_headers)
+    second_response = client.post("/api/backup/run", headers=admin_headers)
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    first = first_response.json()
+    second = second_response.json()
+    first_target = Path(first["target"])
+    second_target = Path(second["target"])
+    assert first_target.name == f"dc_20260617123000_{first['id']}"
+    assert second_target.name == f"dc_20260617123000_{second['id']}"
+    assert first_target != second_target
+    assert first_target.exists()
+    assert second_target.exists()
 
 
 def test_run_backup_records_object_storage_full_target(client, monkeypatch, admin_headers):
@@ -392,12 +448,12 @@ def test_run_backup_records_object_storage_full_target(client, monkeypatch, admi
     data = response.json()
     assert data["status"] == "success"
     assert re.fullmatch(
-        r"https://obs\.example\.com/dc-network-planner-backup/dc-network-planner/dc_\d{14}",
+        rf"https://obs\.example\.com/dc-network-planner-backup/dc-network-planner/dc_\d{{14}}_{re.escape(data['id'])}",
         data["target"],
     )
     upload_call = [call for call in calls if call[0] == "upload"][0]
     assert upload_call[2] == "dc-network-planner-backup"
-    assert re.fullmatch(r"dc-network-planner/dc_\d{14}", upload_call[3])
+    assert re.fullmatch(rf"dc-network-planner/dc_\d{{14}}_{re.escape(data['id'])}", upload_call[3])
 
 
 def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp_path, monkeypatch, admin_headers):

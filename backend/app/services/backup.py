@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.exceptions import BusinessError
 from app.models.backup import BackupConfig, BackupRecord
-from app.schemas.backup import BackupConfigUpdate
+from app.schemas.backup import BACKUP_FILE_PREFIX_MAX_LENGTH, BackupConfigUpdate
 from app.services.change_log import log_change
 from app.utils.time_utils import app_timezone, to_db_datetime, to_utc, utcnow
 
@@ -324,7 +324,7 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
 
     backup_file: Optional[Path] = None
     try:
-        backup_file = _create_sqlite_backup(db, config)
+        backup_file = _create_sqlite_backup(db, config, record.id)
         file_size = backup_file.stat().st_size
         if config.method == "local":
             target = str(backup_file)
@@ -404,6 +404,8 @@ def _validate_backup_basic_format(cron_expression: str, backup_file_prefix: str)
     backup_file_prefix = backup_file_prefix.strip()
     if not backup_file_prefix:
         raise BusinessError("备份文件名前缀不能为空")
+    if len(backup_file_prefix) > BACKUP_FILE_PREFIX_MAX_LENGTH:
+        raise BusinessError(f"备份文件名前缀不能超过 {BACKUP_FILE_PREFIX_MAX_LENGTH} 个字符")
     if "/" in backup_file_prefix or "\\" in backup_file_prefix:
         raise BusinessError("备份文件名前缀不能包含路径分隔符")
 
@@ -455,9 +457,9 @@ def _next_run_from_config(config: BackupConfig, base_time: datetime) -> datetime
     return calculate_next_run(base_time, config.cron_expression)
 
 
-def _create_sqlite_backup(db: Session, config: BackupConfig) -> Path:
+def _create_sqlite_backup(db: Session, config: BackupConfig, record_id: str) -> Path:
     timestamp = utcnow().strftime("%Y%m%d%H%M%S")
-    filename = f"{config.backup_file_prefix}{timestamp}"
+    filename = f"{config.backup_file_prefix}{timestamp}_{record_id}"
     target_dir = Path(config.local_path or settings.BACKUP_DEFAULT_LOCAL_PATH)
     if config.method == "object_storage":
         target_dir = Path(tempfile.gettempdir()) / "dc_network_planner_backups"

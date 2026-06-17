@@ -37,6 +37,8 @@
           <el-input
             v-model="form.backup_file_prefix"
             placeholder="dc_network_planner_data_backup_"
+            maxlength="50"
+            show-word-limit
             clearable
             class="prefix-input"
           />
@@ -161,6 +163,7 @@ import type { BackupConfig, BackupConfigUpdatePayload, BackupMethod, BackupRecor
 
 const loading = ref(false)
 const appStore = useAppStore()
+const BACKUP_FILE_PREFIX_MAX_LENGTH = 50
 const saving = ref(false)
 const running = ref(false)
 const recordsLoading = ref(false)
@@ -196,6 +199,11 @@ const rules = computed(() => ({
   ],
   backup_file_prefix: [
     { required: true, message: '请输入备份文件名前缀', trigger: 'blur' },
+    {
+      max: BACKUP_FILE_PREFIX_MAX_LENGTH,
+      message: `文件名前缀不能超过 ${BACKUP_FILE_PREFIX_MAX_LENGTH} 个字符`,
+      trigger: 'blur',
+    },
     {
       pattern: /^[^/\\]+$/,
       message: '文件名前缀不能包含路径分隔符',

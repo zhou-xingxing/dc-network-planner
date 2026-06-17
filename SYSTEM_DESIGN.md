@@ -294,7 +294,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | id | String(36) UUID | PK | UUID v4 |
 | enabled | Boolean | NOT NULL, default=false | 是否启用定时备份任务 |
 | cron_expression | String(100) | NOT NULL, default='0 2 * * *' | 五段式 cron 表达式：分 时 日 月 周，秒固定为 0 |
-| backup_file_prefix | String(200) | NOT NULL, default='dc_network_planner_data_backup_' | 备份文件名前缀，实际文件名为 `{backup_file_prefix}{YYYYMMDDHHMMSS}` |
+| backup_file_prefix | String(200) | NOT NULL, default='dc_network_planner_data_backup_' | 备份文件名前缀，业务层限制最长 50 个字符；实际文件名为 `{backup_file_prefix}{YYYYMMDDHHMMSS}_{backup_record_id}` |
 | method | String(30) | NOT NULL, default='local' | local/object_storage |
 | local_path | String(500) | NULLABLE | 本地备份目录 |
 | endpoint_url | String(500) | NULLABLE | S3 兼容对象存储 Endpoint |
@@ -442,7 +442,7 @@ GET /api/backup/config
 
 PUT /api/backup/config
   → 更新备份目标和定时任务配置
-  → backup_file_prefix 控制备份文件名前缀，实际文件名为 backup_file_prefix + YYYYMMDDHHMMSS
+  → backup_file_prefix 控制备份文件名前缀，最长 50 个字符；实际文件名为 backup_file_prefix + YYYYMMDDHHMMSS + "_" + backup_record_id
   → cron_expression 使用五段式 cron：分 时 日 月 周，秒固定为 0
   → 支持 *、数字、列表、范围和步长，例如 0 2 * * *、*/15 * * * *、30 3 * * 1-5
   → cron_expression 和 backup_file_prefix 这类不依赖现有配置的格式错误会在读取数据库配置前先被拦截
@@ -639,7 +639,7 @@ flowchart TD
 4. 备份完成后按 `cron_expression` 重新计算下一次执行时间
 5. 手动备份复用同一个 `run_backup()`，但不依赖 `enabled`
 
-**备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的备份文件。文件命名格式为 `{backup_file_prefix}{YYYYMMDDHHMMSS}`，默认如 `dc_network_planner_data_backup_20260428143005`。
+**备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的备份文件。每次执行备份都会先创建一条 `backup_records` 记录，文件命名格式为 `{backup_file_prefix}{YYYYMMDDHHMMSS}_{backup_record_id}`，默认如 `dc_network_planner_data_backup_20260428143005_567217c2-ad12-4667-8203-f04f805acc25`。时间戳便于人工识别生成时间，`backup_record_id` 保证同一秒内多次备份不会覆盖同名文件，并可回查备份历史记录。
 
 **数据库恢复脚本**：恢复入口为 `backend/scripts/restore_database.py`，可通过 `cd backend && make restore-db BACKUP=./backups/<backup_file>` 调用。脚本只支持 SQLite：先按应用配置解析目标数据库路径，再校验备份文件是有效 SQLite 且包含当前项目必要数据表；恢复前默认复制当前数据库为 `*.pre_restore_<timestamp>_<id>.db` 安全快照，随后使用 SQLite backup API 写入临时数据库文件并原子替换目标数据库。恢复前应停止后端服务，避免运行中的进程继续持有旧数据库连接；对象存储备份需要先下载成本地文件再执行脚本。
 
@@ -677,7 +677,7 @@ flowchart TD
 **备份目标**：
 
 - local：文件直接保存到 `local_path`
-- object_storage：先生成临时文件，再通过 boto3 上传到 S3 兼容对象存储。完整备份路径为 `endpoint_url + bucket + object_prefix + 备份文件名`；实现会归一化斜杠，记录为 `{endpoint_url}/{bucket}/{object_prefix}/{backup_file_prefix}{YYYYMMDDHHMMSS}`
+- object_storage：先生成临时文件，再通过 boto3 上传到 S3 兼容对象存储。完整备份路径为 `endpoint_url + bucket + object_prefix + 备份文件名`；实现会归一化斜杠，记录为 `{endpoint_url}/{bucket}/{object_prefix}/{backup_file_prefix}{YYYYMMDDHHMMSS}_{backup_record_id}`
 
 **限制**：当前实现只支持 SQLite 数据库备份与恢复；若未来切换 PostgreSQL/MySQL，需要替换备份生成和恢复策略（如 pg_dump/mysqldump 或数据库原生快照）。
 

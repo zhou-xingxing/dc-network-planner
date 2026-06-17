@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # --- 导入任务 ---
     IMPORT_TTL_MINUTES: int = 30  # 导入临时数据保留时长（分钟），超时后自动清理
+    IMPORT_CACHE_MAXSIZE: int = 100  # 导入预览缓存最多保留的预览会话数量
 
     # --- 时区 ---
     APP_TIMEZONE: str = "Asia/Shanghai"  # 应用全局默认时区

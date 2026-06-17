@@ -3,11 +3,13 @@
 import io
 from typing import cast
 
+from cachetools import TTLCache
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.services import excel as excel_service
 from app.utils.excel_utils import TEMPLATE_HEADERS
 
 
@@ -36,20 +38,81 @@ def _setup_import_target(client, admin_headers, user_headers_factory):
     return region, plane_type, user_headers
 
 
-def test_preview_import_rejects_xls_extension(client, admin_headers):
+def test_import_preview_region_ids_do_not_consume_cache(monkeypatch):
+    """确认导入前的 Region 权限预检查只查看缓存，不消费预览数据。"""
+    monkeypatch.setattr(excel_service, "_import_cache", TTLCache(maxsize=10, ttl=60))
+    rows = [{"_region_id": "region-a"}, {"_region_id": "region-b"}]
+
+    preview_id = excel_service.store_preview(rows)
+
+    assert excel_service.get_preview_region_ids(preview_id) == {"region-a", "region-b"}
+    assert excel_service.get_preview(preview_id) == rows
+    assert excel_service.consume_preview(preview_id) == rows
+    assert excel_service.get_preview(preview_id) is None
+
+
+def test_import_preview_cache_expires(monkeypatch):
+    """导入预览缓存超过 TTL 后应不可读取，并可主动清理。"""
+    monkeypatch.setattr(excel_service, "_import_cache", TTLCache(maxsize=10, ttl=0))
+    preview_id = excel_service.store_preview([{"_region_id": "region-a"}])
+
+    assert excel_service.cleanup_expired_previews() == 1
+    assert excel_service.get_preview(preview_id) is None
+
+
+def test_import_preview_cache_respects_maxsize(monkeypatch):
+    """导入预览缓存超过容量上限后应淘汰较早的预览。"""
+    monkeypatch.setattr(excel_service, "_import_cache", TTLCache(maxsize=1, ttl=60))
+
+    first_preview_id = excel_service.store_preview([{"_region_id": "region-a"}])
+    second_rows = [{"_region_id": "region-b"}]
+    second_preview_id = excel_service.store_preview(second_rows)
+
+    assert excel_service.get_preview(first_preview_id) is None
+    assert excel_service.get_preview(second_preview_id) == second_rows
+
+
+def test_administrator_cannot_use_excel_import(client, admin_headers):
+    """管理员不可使用 Excel 导入预览和确认接口。"""
+    preview_response = client.post(
+        "/api/excel/import/preview",
+        files={
+            "file": (
+                "import.xlsx",
+                _workbook_bytes(IMPORT_TEMPLATE_HEADERS, []),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=admin_headers,
+    )
+    confirm_response = client.post(
+        "/api/excel/import/confirm",
+        json={"preview_id": "not-used"},
+        headers=admin_headers,
+    )
+
+    assert preview_response.status_code == 403
+    assert preview_response.json()["detail"] == "administrator 不可使用 Excel 导入功能"
+    assert confirm_response.status_code == 403
+    assert confirm_response.json()["detail"] == "administrator 不可使用 Excel 导入功能"
+
+
+def test_preview_import_rejects_xls_extension(client, user_headers_factory):
     """导入预览只允许上传 .xlsx 文件。"""
+    user_headers = user_headers_factory([])
     response = client.post(
         "/api/excel/import/preview",
         files={"file": ("import.xls", b"not-a-real-xls", "application/vnd.ms-excel")},
-        headers=admin_headers,
+        headers=user_headers,
     )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "仅支持 .xlsx 文件"
 
 
-def test_preview_import_rejects_invalid_xlsx(client, admin_headers):
+def test_preview_import_rejects_invalid_xlsx(client, user_headers_factory):
     """损坏的 xlsx 应返回可理解的 400 错误。"""
+    user_headers = user_headers_factory([])
     response = client.post(
         "/api/excel/import/preview",
         files={
@@ -59,7 +122,7 @@ def test_preview_import_rejects_invalid_xlsx(client, admin_headers):
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         },
-        headers=admin_headers,
+        headers=user_headers,
     )
 
     assert response.status_code == 400
@@ -274,6 +337,16 @@ def test_confirm_import_success_creates_region_plane(client, admin_headers, user
         "error_count": 0,
         "errors": [],
     }
+
+    second_response = client.post(
+        "/api/excel/import/confirm",
+        json={"preview_id": preview_data["preview_id"]},
+        headers=user_headers,
+    )
+    assert second_response.status_code == 200
+    assert second_response.json()["success"] is False
+    assert second_response.json()["imported_count"] == 0
+    assert second_response.json()["errors"][0]["errors"] == ["预览数据已过期，请重新上传"]
 
     planes_response = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
     assert planes_response.status_code == 200

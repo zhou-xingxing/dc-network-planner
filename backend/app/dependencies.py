@@ -42,6 +42,13 @@ def require_administrator(current_user: User = Depends(get_current_user)) -> Use
     return current_user
 
 
+def require_excel_import_user(current_user: User = Depends(get_current_user)) -> User:
+    """Require a normal user for Excel import endpoints."""
+    if current_user.role == "administrator":
+        raise HTTPException(status_code=403, detail="administrator 不可使用 Excel 导入功能")
+    return current_user
+
+
 def ensure_region_business_write_allowed(current_user: User, region_id: str) -> None:
     """Require a normal user permitted to write business data in the target Region."""
     if current_user.role == "administrator":

@@ -9,6 +9,7 @@ from app.dependencies import (
     ensure_region_business_write_allowed,
     get_current_user,
     operator_name,
+    require_excel_import_user,
 )
 from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
@@ -38,7 +39,7 @@ def download_template(db: Session = Depends(get_db)) -> StreamingResponse:
 async def preview_import(
     file: UploadFile,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_excel_import_user),
 ) -> dict[str, Any]:
     """上传 Excel 文件并预览导入结果。"""
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
@@ -56,7 +57,7 @@ async def preview_import(
 def confirm_import(
     data: ImportConfirmRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_excel_import_user),
 ) -> ImportResultResponse:
     """确认执行导入预览数据。"""
     region_ids: set[str] | None = excel_service.get_preview_region_ids(data.preview_id)

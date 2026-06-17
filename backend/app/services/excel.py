@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
 from io import BytesIO
-from threading import Lock
+from threading import RLock
 from typing import Any, Optional
 
+from cachetools import TTLCache
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -15,18 +15,18 @@ from app.services.region_plane import create_plane_for_region, normalize_plane_s
 from app.services.user import get_user_permitted_region_ids
 from app.utils.excel_utils import build_export, parse_excel
 from app.utils.ip_utils import ip_belongs_to_network, parse_cidr, parse_ip
-from app.utils.time_utils import format_datetime, utcnow
+from app.utils.time_utils import format_datetime
 
-# In-memory import preview cache
-_import_cache: dict[str, dict[str, Any]] = {}
-_import_cache_lock = Lock()
-_IMPORT_TTL = timedelta(minutes=settings.IMPORT_TTL_MINUTES)
+# 单实例进程级导入预览缓存；访问由锁保护，避免并发请求破坏 TTL/LRU 元数据。
+_import_cache: TTLCache[str, list[dict[str, Any]]] = TTLCache[str, list[dict[str, Any]]](
+    maxsize=settings.IMPORT_CACHE_MAXSIZE,
+    ttl=settings.IMPORT_TTL_MINUTES * 60,
+)
+_import_cache_lock = RLock()
 
 
 def store_preview(rows: list[dict[str, Any]]) -> str:
-    """存储导入预览数据到内存缓存。
-
-    数据在缓存中保留 _IMPORT_TTL（30 分钟），超时后自动失效。
+    """存储导入预览数据到进程级 TTL 缓存。
 
     Args:
         rows: 解析后的行数据列表。
@@ -36,15 +36,13 @@ def store_preview(rows: list[dict[str, Any]]) -> str:
     """
     preview_id = str(uuid.uuid4())
     with _import_cache_lock:
-        _import_cache[preview_id] = {
-            "rows": rows,
-            "created_at": utcnow(),
-        }
+        _import_cache.expire()
+        _import_cache[preview_id] = rows
     return preview_id
 
 
 def get_preview(preview_id: str) -> Optional[list[dict[str, Any]]]:
-    """从内存缓存中获取导入预览数据。
+    """查看导入预览数据，不消费缓存。
 
     Args:
         preview_id: 预览数据 ID。
@@ -53,11 +51,21 @@ def get_preview(preview_id: str) -> Optional[list[dict[str, Any]]]:
         预览的行数据列表，已过期或不存在时返回 None。
     """
     with _import_cache_lock:
-        entry = _import_cache.get(preview_id)
-        if entry and utcnow() - entry["created_at"] < _IMPORT_TTL:
-            return entry["rows"]  # type: ignore[no-any-return]
-        _import_cache.pop(preview_id, None)
-        return None
+        _import_cache.expire()
+        return _import_cache.get(preview_id)
+
+
+def consume_preview(preview_id: str) -> Optional[list[dict[str, Any]]]:
+    """读取并删除导入预览数据，用于确认导入的一次性消费。"""
+    with _import_cache_lock:
+        _import_cache.expire()
+        return _import_cache.pop(preview_id, None)
+
+
+def cleanup_expired_previews() -> int:
+    """清理过期导入预览缓存，返回清理条目数量。"""
+    with _import_cache_lock:
+        return len(_import_cache.expire())
 
 
 def get_preview_region_ids(preview_id: str) -> Optional[set[str]]:
@@ -212,7 +220,7 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
     Returns:
         包含 success、imported_count、error_count、errors 的导入结果字典。
     """
-    rows = get_preview(preview_id)
+    rows = consume_preview(preview_id)
     if rows is None:
         return {
             "success": False,

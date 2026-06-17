@@ -46,10 +46,13 @@
                     :limit="1"
                     accept=".xlsx"
                     :on-change="onFileChange"
+                    :disabled="!canPreviewImport"
                     class="upload-area"
                   >
                     <template #trigger>
-                      <el-button class="choose-file-button" type="primary" plain :icon="Upload">选择文件</el-button>
+                      <el-button class="choose-file-button" type="primary" plain :icon="Upload" :disabled="!canPreviewImport">
+                        选择文件
+                      </el-button>
                     </template>
                   </el-upload>
                   <el-button
@@ -57,7 +60,7 @@
                     type="primary"
                     @click="previewUpload"
                     :loading="previewLoading"
-                    :disabled="!selectedFile"
+                    :disabled="!selectedFile || !canPreviewImport"
                   >
                     预览
                   </el-button>
@@ -243,12 +246,13 @@ interface InvolvedRegionState {
 }
 
 const appStore = useAppStore()
+const canPreviewImport = computed(() => appStore.currentUser?.role !== 'administrator')
 const canImport = computed(
   () => appStore.currentUser?.role === 'user' && (appStore.currentUser?.permitted_regions || []).length > 0
 )
 const importPermissionMainText = computed(() => {
   if (appStore.currentUser?.role === 'administrator') {
-    return '管理员可预览和导出，不能确认导入。'
+    return '管理员可下载模板和导出数据，不能上传或预览 Excel 导入文件。'
   }
   if ((appStore.currentUser?.permitted_regions || []).length === 0) {
     return '当前账号暂无可导入的授权 Region。'
@@ -257,7 +261,7 @@ const importPermissionMainText = computed(() => {
 })
 const importPermissionTip = computed(() => {
   if (appStore.currentUser?.role === 'administrator') {
-    return '管理员不管理 Region 内业务数据。'
+    return 'Region 内业务数据导入仅限已授权普通用户。'
   }
   if ((appStore.currentUser?.permitted_regions || []).length === 0) {
     return '可下载模板、预览文件和导出数据。'
@@ -332,13 +336,14 @@ async function downloadTemplate() {
 }
 
 function onFileChange(uploadFile: UploadFile) {
+  if (!canPreviewImport.value) return
   selectedFile.value = uploadFile.raw ?? null
   previewData.value = null
   importResult.value = null
 }
 
 async function previewUpload() {
-  if (!selectedFile.value) return
+  if (!selectedFile.value || !canPreviewImport.value) return
   previewLoading.value = true
   try {
     previewData.value = await previewImport(selectedFile.value)

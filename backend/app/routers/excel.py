@@ -15,7 +15,7 @@ from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region import Region
 from app.models.user import User
-from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
+from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse, ImportRowResult
 from app.services import excel as excel_service
 from app.utils.excel_utils import generate_template
 
@@ -68,6 +68,7 @@ def confirm_import(
             "imported_count": 0,
             "error_count": 0,
             "errors": [{"row": 0, "errors": ["预览数据已过期，请重新上传"]}],
+            "row_results": [],
         }
     else:
         for region_id in region_ids:
@@ -78,6 +79,7 @@ def confirm_import(
         imported_count=result["imported_count"],
         error_count=result["error_count"],
         errors=[ImportError(**e) for e in result["errors"]],
+        row_results=[ImportRowResult(**row) for row in result["row_results"]],
     )
 
 

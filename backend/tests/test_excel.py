@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.services import excel as excel_service
-from app.utils.excel_utils import TEMPLATE_HEADERS
+from app.utils.excel_utils import IMPORT_MAX_ROWS, TEMPLATE_HEADERS
 
 
 def _workbook_bytes(headers, rows):
@@ -127,6 +127,54 @@ def test_preview_import_rejects_invalid_xlsx(client, user_headers_factory):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Excel 文件无法解析，请确认文件为有效的 .xlsx 工作簿"
+
+
+def test_preview_import_rejects_rows_over_limit(client, user_headers_factory):
+    """导入数据超过 1000 条时应拒绝整份文件。"""
+    user_headers = user_headers_factory([])
+    rows = [
+        ["导入区域", "导入平面", "Global", "10.10.0.0/24", 100, "CE01", "10.10.0.1"] for _ in range(IMPORT_MAX_ROWS + 1)
+    ]
+
+    response = client.post(
+        "/api/excel/import/preview",
+        files={
+            "file": (
+                "import.xlsx",
+                _workbook_bytes(IMPORT_TEMPLATE_HEADERS, rows),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "单次最多导入 1000 条数据，当前文件包含 1001 条"
+
+
+def test_preview_import_accepts_rows_at_limit(client, user_headers_factory):
+    """导入数据恰好 1000 条时应继续执行逐行预览校验。"""
+    user_headers = user_headers_factory([])
+    rows = [
+        ["不存在区域", "不存在平面", "Global", "10.10.0.0/24", 100, "CE01", "10.10.0.1"] for _ in range(IMPORT_MAX_ROWS)
+    ]
+
+    response = client.post(
+        "/api/excel/import/preview",
+        files={
+            "file": (
+                "import.xlsx",
+                _workbook_bytes(IMPORT_TEMPLATE_HEADERS, rows),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total_rows"] == IMPORT_MAX_ROWS
+    assert response.json()["valid_rows"] == 0
+    assert len(response.json()["error_rows"]) == IMPORT_MAX_ROWS
 
 
 def test_preview_import_rejects_gateway_ip_outside_cidr(client, admin_headers, user_headers_factory):
@@ -331,12 +379,26 @@ def test_confirm_import_success_creates_region_plane(client, admin_headers, user
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "success": True,
-        "imported_count": 1,
-        "error_count": 0,
+    result = response.json()
+    assert result["success"] is True
+    assert result["imported_count"] == 1
+    assert result["error_count"] == 0
+    assert result["errors"] == []
+    assert len(result["row_results"]) == 1
+    assert result["row_results"][0] == {
+        "row": 2,
+        "status": "success",
+        "region_name": "导入区域",
+        "plane_type_name": "导入平面",
+        "scope": "Global",
+        "ip_range": "10.10.0.0/24",
+        "vlan_id": 100,
+        "gateway_position": "CE01",
+        "gateway_ip": "10.10.0.1",
+        "plane_id": result["row_results"][0]["plane_id"],
         "errors": [],
     }
+    assert result["row_results"][0]["plane_id"]
 
     second_response = client.post(
         "/api/excel/import/confirm",
@@ -347,6 +409,7 @@ def test_confirm_import_success_creates_region_plane(client, admin_headers, user
     assert second_response.json()["success"] is False
     assert second_response.json()["imported_count"] == 0
     assert second_response.json()["errors"][0]["errors"] == ["预览数据已过期，请重新上传"]
+    assert second_response.json()["row_results"] == []
 
     planes_response = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
     assert planes_response.status_code == 200
@@ -358,6 +421,88 @@ def test_confirm_import_success_creates_region_plane(client, admin_headers, user
     assert planes[0]["vlan_id"] == 100
     assert planes[0]["gateway_position"] == "CE01"
     assert planes[0]["gateway_ip"] == "10.10.0.1"
+
+
+def test_confirm_import_returns_success_and_failure_details(client, admin_headers, user_headers_factory):
+    """确认导入应返回每个有效行的最终成功或失败结果。"""
+    _, _, user_headers = _setup_import_target(client, admin_headers, user_headers_factory)
+    file_bytes = _workbook_bytes(
+        IMPORT_TEMPLATE_HEADERS,
+        [
+            ["导入区域", "导入平面", "Global", "10.10.0.0/24", 100, "CE01", "10.10.0.1"],
+            ["导入区域", "导入平面", "Global", "10.10.1.0/24", 101, "CE02", "10.10.1.1"],
+        ],
+    )
+    preview_response = client.post(
+        "/api/excel/import/preview",
+        files={
+            "file": (
+                "import.xlsx",
+                file_bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+    assert preview_response.status_code == 200
+    assert preview_response.json()["valid_rows"] == 2
+
+    response = client.post(
+        "/api/excel/import/confirm",
+        json={"preview_id": preview_response.json()["preview_id"]},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["success"] is False
+    assert result["imported_count"] == 1
+    assert result["error_count"] == 1
+    assert [row["status"] for row in result["row_results"]] == ["success", "failed"]
+    assert [row["row"] for row in result["row_results"]] == [2, 3]
+    assert result["row_results"][0]["plane_id"]
+    assert result["row_results"][0]["errors"] == []
+    assert result["row_results"][1]["plane_id"] is None
+    assert result["row_results"][1]["errors"] == ["该网络平面类型已在本Region 的 Global 作用域中创建，不能重复创建"]
+    assert result["errors"][0]["row"] == 3
+    assert result["errors"][0]["errors"] == result["row_results"][1]["errors"]
+
+
+def test_confirm_import_without_valid_rows_is_not_successful(client, admin_headers, user_headers_factory):
+    """预览中没有有效行时，直接调用确认接口也不应返回成功。"""
+    _, _, user_headers = _setup_import_target(client, admin_headers, user_headers_factory)
+    file_bytes = _workbook_bytes(
+        IMPORT_TEMPLATE_HEADERS,
+        [["导入区域", "导入平面", "Global", "bad-cidr", 100, "CE01", "10.10.0.1"]],
+    )
+    preview_response = client.post(
+        "/api/excel/import/preview",
+        files={
+            "file": (
+                "import.xlsx",
+                file_bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+    assert preview_response.status_code == 200
+    assert preview_response.json()["valid_rows"] == 0
+
+    response = client.post(
+        "/api/excel/import/confirm",
+        json={"preview_id": preview_response.json()["preview_id"]},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": False,
+        "imported_count": 0,
+        "error_count": 0,
+        "errors": [],
+        "row_results": [],
+    }
 
 
 def test_download_template_includes_region_and_plane_type_dropdowns(client, admin_headers):

@@ -65,13 +65,15 @@
                     预览
                   </el-button>
                 </div>
-                <div class="upload-tip">{{ selectedFile?.name || '仅支持 .xlsx 文件' }}</div>
+                <div class="upload-tip">
+                  {{ selectedFile?.name || '未选择文件' }}；单次最多导入 {{ IMPORT_MAX_ROWS }} 条数据，仅支持 .xlsx 文件
+                </div>
               </div>
             </div>
           </div>
 
           <!-- 预览结果 -->
-          <div v-if="previewData" class="preview-panel">
+          <div v-if="previewData && !importResult" class="preview-panel">
             <div class="result-header">
               <div>
                 <div class="result-title">预览结果</div>
@@ -161,40 +163,85 @@
             </el-tooltip>
           </div>
 
-          <!-- 导入结果 -->
-          <el-result v-if="importResult" icon="success" :title="`导入完成`" :sub-title="`成功 ${importResult.imported_count} 条，失败 ${importResult.error_count} 条`">
-            <template #extra>
-              <div v-if="importResult.errors?.length" class="import-result-errors">
-                <el-table :data="importResult.errors" stripe border size="small">
-                  <el-table-column prop="row" label="行号" width="80" />
-                  <el-table-column prop="region_name" label="Region" width="130">
-                    <template #default="{ row }">{{ row.region_name || '-' }}</template>
-                  </el-table-column>
-                  <el-table-column label="类型" width="100" align="center">
-                    <template #default="{ row }">
-                      <el-tag :type="errorTypeMeta(row.error_type).tagType" size="small" effect="plain">
-                        {{ errorTypeMeta(row.error_type).label }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="errors" label="错误" min-width="300">
-                    <template #default="{ row }">
-                      <el-tag
-                        v-for="err in row.errors"
-                        :key="err"
-                        :type="errorTypeMeta(row.error_type).tagType"
-                        size="small"
-                        style="margin: 2px"
-                      >
-                        {{ err }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                </el-table>
+          <!-- 最终导入结果 -->
+          <section v-if="importResult" class="final-result-panel">
+            <div class="final-result-header">
+              <div class="final-result-heading">
+                <el-icon class="final-result-icon" :class="importResult.success ? 'is-success' : 'is-warning'">
+                  <CircleCheckFilled v-if="importResult.success" />
+                  <WarningFilled v-else />
+                </el-icon>
+                <div>
+                  <div class="result-title">{{ importResultTitle }}</div>
+                  <p class="result-desc">{{ importResultDescription }}</p>
+                </div>
               </div>
-              <el-button type="primary" @click="resetImport">继续导入</el-button>
+              <div class="result-metrics final-result-metrics">
+                <div class="metric-item">
+                  <span class="metric-value">{{ importResult.row_results.length }}</span>
+                  <span class="metric-label">确认行数</span>
+                </div>
+                <div class="metric-item is-success">
+                  <span class="metric-value">{{ importResult.imported_count }}</span>
+                  <span class="metric-label">成功</span>
+                </div>
+                <div class="metric-item" :class="{ 'is-danger': importResult.error_count > 0 }">
+                  <span class="metric-value">{{ importResult.error_count }}</span>
+                  <span class="metric-label">失败</span>
+                </div>
+              </div>
+            </div>
+
+            <el-alert
+              v-if="importResult.row_results.length === 0"
+              :title="sessionResultError || '本次确认没有可处理的数据'"
+              type="error"
+              :closable="false"
+              show-icon
+            />
+
+            <template v-else>
+              <div class="final-result-toolbar">
+                <span class="final-result-table-title">逐行结果</span>
+                <el-segmented v-model="resultFilter" :options="resultFilterOptions" size="small" />
+              </div>
+              <el-table :data="filteredRowResults" border stripe size="small" max-height="520" class="final-result-table">
+                <el-table-column label="状态" width="76" fixed="left" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.status === 'success' ? 'success' : 'danger'" effect="plain" size="small">
+                      {{ row.status === 'success' ? '成功' : '失败' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="row" label="Excel 行" width="76" align="center" />
+                <el-table-column prop="region_name" label="Region" min-width="130" show-overflow-tooltip />
+                <el-table-column label="网络平面 / 作用域" min-width="170">
+                  <template #default="{ row }">
+                    <div class="result-cell-primary">{{ row.plane_type_name }}</div>
+                    <div class="result-cell-secondary">{{ row.scope }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="CIDR / VLAN" width="155">
+                  <template #default="{ row }">
+                    <div class="result-cell-primary">{{ row.ip_range }}</div>
+                    <div class="result-cell-secondary">VLAN {{ row.vlan_id ?? '-' }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="最终结果" min-width="245">
+                  <template #default="{ row }">
+                    <span v-if="row.status === 'success'" class="row-result-message is-success">已创建网络平面</span>
+                    <div v-else class="row-result-message is-failed">
+                      <div v-for="error in row.errors" :key="error">{{ error }}</div>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
             </template>
-          </el-result>
+
+            <div class="final-result-footer">
+              <el-button type="primary" :icon="RefreshLeft" @click="resetImport">继续导入</el-button>
+            </div>
+          </section>
         </el-tab-pane>
 
         <el-tab-pane label="导出 Excel" name="export">
@@ -230,8 +277,16 @@ import { fetchRegions } from '@/api/regions'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { useAppStore } from '@/stores/app'
-import { Download, Upload } from '@element-plus/icons-vue'
-import type { ExcelExportParams, ImportErrorType, ImportPreview, ImportResult, Region } from '@/types'
+import { CircleCheckFilled, Download, RefreshLeft, Upload, WarningFilled } from '@element-plus/icons-vue'
+import type {
+  ExcelExportParams,
+  ImportErrorType,
+  ImportPreview,
+  ImportResult,
+  ImportRowResult,
+  ImportRowStatus,
+  Region,
+} from '@/types'
 
 interface InvolvedRegion {
   name: string
@@ -244,6 +299,9 @@ interface InvolvedRegionState {
   hasInvalid: boolean
   hasPermissionError: boolean
 }
+
+type ResultFilter = 'all' | ImportRowStatus
+const IMPORT_MAX_ROWS = 1000
 
 const appStore = useAppStore()
 const canPreviewImport = computed(() => appStore.currentUser?.role !== 'administrator')
@@ -276,6 +334,7 @@ const previewLoading = ref(false)
 const previewData = ref<ImportPreview | null>(null)
 const importing = ref(false)
 const importResult = ref<ImportResult | null>(null)
+const resultFilter = ref<ResultFilter>('all')
 const uploadRef = ref()
 
 const regions = ref<Region[]>([])
@@ -288,6 +347,30 @@ const confirmImportDisabledTip = computed(() => {
   if (previewData.value.valid_rows === 0) return '没有可确认导入的有效行'
   return ''
 })
+const resultFilterOptions = computed(() => [
+  { label: `全部 ${importResult.value?.row_results.length || 0}`, value: 'all' },
+  { label: `成功 ${importResult.value?.imported_count || 0}`, value: 'success' },
+  { label: `失败 ${importResult.value?.error_count || 0}`, value: 'failed' },
+])
+const filteredRowResults = computed<ImportRowResult[]>(() => {
+  const rows = importResult.value?.row_results || []
+  if (resultFilter.value === 'all') return rows
+  return rows.filter((row) => row.status === resultFilter.value)
+})
+const importResultTitle = computed(() => {
+  if (!importResult.value?.row_results.length) return '导入未完成'
+  if (importResult.value.error_count === 0) return '全部导入成功'
+  if (importResult.value.imported_count === 0) return '全部导入失败'
+  return '部分数据导入成功'
+})
+const importResultDescription = computed(() => {
+  if (!importResult.value?.row_results.length) return '请根据提示重新上传并确认导入。'
+  if (importResult.value.error_count === 0) return '所有确认行均已写入系统。'
+  return '成功行已写入系统，失败行未写入；请查看逐行结果和失败原因。'
+})
+const sessionResultError = computed(() =>
+  (importResult.value?.errors || []).flatMap((item) => item.errors).join('；')
+)
 const involvedRegions = computed<InvolvedRegion[]>(() => {
   if (!previewData.value) return []
   const regionMap = new Map<string, InvolvedRegionState>()
@@ -340,6 +423,7 @@ function onFileChange(uploadFile: UploadFile) {
   selectedFile.value = uploadFile.raw ?? null
   previewData.value = null
   importResult.value = null
+  resultFilter.value = 'all'
 }
 
 async function previewUpload() {
@@ -358,8 +442,11 @@ async function confirmImport() {
   try {
     const result = await confirmImportApi(previewData.value.preview_id)
     importResult.value = result
+    resultFilter.value = 'all'
     if (result.imported_count === 0 && result.error_count > 0) {
       ElMessage.warning('所有行导入失败')
+    } else if (result.error_count > 0) {
+      ElMessage.warning('部分行导入失败，请查看逐行结果')
     }
   } finally {
     importing.value = false
@@ -370,6 +457,7 @@ function resetImport() {
   selectedFile.value = null
   previewData.value = null
   importResult.value = null
+  resultFilter.value = 'all'
 }
 
 async function handleExport() {
@@ -626,10 +714,87 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-.import-result-errors {
-  width: min(760px, 100%);
-  margin: 0 auto 16px;
-  text-align: left;
+.final-result-panel {
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border);
+}
+
+.final-result-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.final-result-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.final-result-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  font-size: 24px;
+}
+
+.final-result-icon.is-success {
+  color: var(--el-color-success);
+}
+
+.final-result-icon.is-warning {
+  color: var(--el-color-warning);
+}
+
+.final-result-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  margin: 16px 0 10px;
+}
+
+.final-result-table-title {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.final-result-table {
+  width: 100%;
+}
+
+.result-cell-primary {
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+.result-cell-secondary {
+  margin-top: 2px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+}
+
+.row-result-message {
+  line-height: 1.5;
+}
+
+.row-result-message.is-success {
+  color: var(--el-color-success-dark-2);
+  font-weight: 600;
+}
+
+.row-result-message.is-failed {
+  color: var(--el-color-danger-dark-2);
+}
+
+.final-result-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 .sub-title {
@@ -672,7 +837,8 @@ onMounted(async () => {
 
 @media (max-width: 900px) {
   .permission-strip,
-  .result-header {
+  .result-header,
+  .final-result-header {
     align-items: stretch;
     flex-direction: column;
   }
@@ -688,6 +854,11 @@ onMounted(async () => {
 
   .result-metrics {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .final-result-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

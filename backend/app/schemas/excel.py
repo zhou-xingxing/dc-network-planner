@@ -35,11 +35,28 @@ class ImportConfirmRequest(BaseModel):
     preview_id: str
 
 
+class ImportRowResult(BaseModel):
+    """Excel 确认导入的单行最终结果。"""
+
+    row: int
+    status: Literal["success", "failed"]
+    region_name: str
+    plane_type_name: str
+    scope: str
+    ip_range: str
+    vlan_id: Optional[int] = None
+    gateway_position: Optional[str] = None
+    gateway_ip: Optional[str] = None
+    plane_id: Optional[str] = None
+    errors: list[str]
+
+
 class ImportResultResponse(BaseModel):
     success: bool
     imported_count: int
     error_count: int
     errors: list[ImportError]
+    row_results: list[ImportRowResult]
 
 
 class StatsResponse(BaseModel):

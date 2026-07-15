@@ -1,6 +1,7 @@
 import type { EntityId } from "./common"
 
 export type ImportErrorType = "validation" | "permission" | "business"
+export type ImportRowStatus = "success" | "failed"
 
 export interface ImportRow {
   row_number: number
@@ -33,6 +34,21 @@ export interface ImportResult {
   imported_count: number
   error_count: number
   errors: ImportErrorItem[]
+  row_results: ImportRowResult[]
+}
+
+export interface ImportRowResult {
+  row: number
+  status: ImportRowStatus
+  region_name: string
+  plane_type_name: string
+  scope: string
+  ip_range: string
+  vlan_id?: number | null
+  gateway_position?: string | null
+  gateway_ip?: string | null
+  plane_id?: EntityId | null
+  errors: string[]
 }
 
 export interface ExcelExportParams {

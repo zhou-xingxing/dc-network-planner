@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from io import BytesIO
 from threading import RLock
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from cachetools import TTLCache
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from app.exceptions import BusinessError, ResourceNotFoundError
 from app.models.user import User
 from app.services.region_plane import create_plane_for_region, normalize_plane_scope
 from app.services.user import get_user_permitted_region_ids
-from app.utils.excel_utils import build_export, parse_excel
+from app.utils.excel_utils import IMPORT_MAX_ROWS, build_export, parse_excel
 from app.utils.ip_utils import ip_belongs_to_network, parse_cidr, parse_ip
 from app.utils.time_utils import format_datetime
 
@@ -99,6 +99,8 @@ def preview_import(file_bytes: bytes, db: Session, current_user: User) -> dict[s
         parsed_rows = parse_excel(file_bytes)
     except ValueError as exc:
         raise BusinessError(str(exc)) from exc
+    if len(parsed_rows) > IMPORT_MAX_ROWS:
+        raise BusinessError(f"单次最多导入 {IMPORT_MAX_ROWS} 条数据，当前文件包含 {len(parsed_rows)} 条")
     valid_rows = []
     error_rows = []
 
@@ -218,7 +220,8 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
         db: 数据库会话。
 
     Returns:
-        包含 success、imported_count、error_count、errors 的导入结果字典。
+        包含 success、imported_count、error_count、errors 和 row_results
+        的导入结果字典。
     """
     rows = consume_preview(preview_id)
     if rows is None:
@@ -227,14 +230,16 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
             "imported_count": 0,
             "error_count": 0,
             "errors": [{"row": 0, "error_type": "validation", "errors": ["预览数据已过期，请重新上传"]}],
+            "row_results": [],
         }
 
     imported = 0
     errors = []
+    row_results = []
 
     for row in rows:
         try:
-            create_plane_for_region(
+            mutation_result = create_plane_for_region(
                 db,
                 row["_region_id"],
                 row["_plane_type_id"],
@@ -246,21 +251,58 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
                 gateway_ip=row.get("gateway_ip"),
             )
             imported += 1
+            row_results.append(
+                _build_import_row_result(
+                    row,
+                    status="success",
+                    plane_id=mutation_result.plane.id,
+                )
+            )
         except (BusinessError, ResourceNotFoundError) as e:
-            errors.append(
-                {
-                    "row": row["row_number"],
-                    "region_name": row["region_name"],
-                    "error_type": "business",
-                    "errors": [str(e)],
-                }
+            row_error = {
+                "row": row["row_number"],
+                "region_name": row["region_name"],
+                "error_type": "business",
+                "errors": [str(e)],
+            }
+            errors.append(row_error)
+            row_results.append(
+                _build_import_row_result(
+                    row,
+                    status="failed",
+                    errors=row_error["errors"],
+                )
             )
 
     return {
-        "success": True,
+        "success": bool(row_results) and len(errors) == 0,
         "imported_count": imported,
         "error_count": len(errors),
         "errors": errors,
+        "row_results": row_results,
+    }
+
+
+def _build_import_row_result(
+    row: dict[str, Any],
+    *,
+    status: Literal["success", "failed"],
+    plane_id: str | None = None,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    """构造确认导入的单行最终结果。"""
+    return {
+        "row": row["row_number"],
+        "status": status,
+        "region_name": row["region_name"],
+        "plane_type_name": row["plane_type_name"],
+        "scope": row["scope"],
+        "ip_range": row["ip_range"],
+        "vlan_id": row["vlan_id"],
+        "gateway_position": row.get("gateway_position"),
+        "gateway_ip": row.get("gateway_ip"),
+        "plane_id": plane_id,
+        "errors": errors or [],
     }
 
 

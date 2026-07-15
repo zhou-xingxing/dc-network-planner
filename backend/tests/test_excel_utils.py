@@ -7,7 +7,7 @@ import pytest
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from app.utils.excel_utils import generate_template, parse_excel
+from app.utils.excel_utils import IMPORT_MAX_ROWS, TEMPLATE_INPUT_MAX_ROW, generate_template, parse_excel
 
 
 def test_generate_template():
@@ -32,6 +32,8 @@ def test_generate_template():
     validations = list(ws.data_validations.dataValidation)
     assert len(validations) == 2
     assert {validation.formula1 for validation in validations} == {"=RegionNameOptions", "=PlaneTypeNameOptions"}
+    assert TEMPLATE_INPUT_MAX_ROW == IMPORT_MAX_ROWS + 1
+    assert {str(validation.sqref) for validation in validations} == {"A2:A1001", "B2:B1001"}
 
     wb.close()
 

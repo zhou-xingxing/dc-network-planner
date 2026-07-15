@@ -13,6 +13,7 @@
 | 变更追溯 | 所有数据操作（创建/更新/删除/导入）自动记录变更日志，可查询操作者、时间、变更内容 |
 | 数据备份 | 支持配置备份目标，手动立即备份，按五段式 cron 表达式自动备份 |
 | 认证与权限 | 支持本地账号登录，按 administrator / user 两类角色控制全局配置和 Region 业务数据写权限 |
+| 外部 API 访问令牌 | 支持短期不透明 Token 签发；同一用户重新签发时自动替换旧令牌，管理员可查看未撤销、未过期令牌并手动撤销 |
 
 ## 2. 技术选型
 
@@ -41,18 +42,18 @@
 graph TB
     subgraph Frontend["前端 (Vue 3 + TypeScript + Vite)"]
         direction TB
-        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 个人主页 · 用户管理"]
+        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 个人主页 · 用户管理 · 外部 API 访问令牌管理"]
         FE_Axios["Axios / REST API<br/>自动注入 Authorization: Bearer token"]
         FE_Pages --> FE_Axios
     end
 
     subgraph Backend["后端 (FastAPI)"]
         direction TB
-        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel<br/>change-logs · stats · backup"]
+        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel · external-auth<br/>external-access-tokens · change-logs · stats · backup"]
         Deps["Dependencies<br/>Bearer Token 认证 · 角色校验 · Region 授权校验"]
-        Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / excel / change_log / backup<br/>· token 签发与认证鉴权<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
+        Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / excel / external_token / change_log / backup<br/>· 外部 API 访问令牌签发与管理员撤销<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
         Utils["Utils（工具函数）<br/>密码哈希与校验 · IP/CIDR 解析 · Excel 文件处理 · 时间转换"]
-        Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
+        Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / ExternalAccessToken / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
         Routers --> Deps
         Deps --> Services
         Routers --> Services --> Models
@@ -80,10 +81,10 @@ graph TB
 - **App.vue** - 根组件，仅包含 `<router-view />`
 - **AppLayout.vue** - 布局组件，包含侧边栏导航 + 顶栏（面包屑 + 当前用户入口 + 退出登录）+ 内容区
 - **views/** - 页面组件，每个对应一个路由
-- **api/** - Axios 请求封装模块，按业务领域拆分，请求参数和响应数据使用 TypeScript 类型约束
+- **api/** - Axios 请求封装模块，按业务领域拆分；包含外部 API 访问令牌的管理员管理接口调用，请求参数和响应数据使用 TypeScript 类型约束
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
-- **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、备份、导入导出和统计响应
+- **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、外部 API 访问令牌、备份、导入导出和统计响应
 
 ### 3.3 单实例部署约束
 
@@ -104,6 +105,7 @@ graph TB
 ```mermaid
 erDiagram
     User ||--o{ UserRegionPermission : "拥有权限"
+    User ||--o{ ExternalAccessToken : "签发"
     Region ||--o{ UserRegionPermission : "权限范围"
     Region ||--o{ RegionNetworkPlane : "1:N"
     NetworkPlaneType ||--o{ NetworkPlaneType : "self parent-child"
@@ -168,8 +170,19 @@ erDiagram
         text   old_value
         text   new_value
         string operator
+        string operation_method
         text   comment
         datetime created_at
+    }
+
+    ExternalAccessToken {
+        string id PK
+        string token_hash UK
+        string user_id FK
+        text   scopes
+        datetime created_at
+        datetime expires_at
+        datetime revoked_at
     }
 
     BackupConfig {
@@ -222,7 +235,7 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 
 #### external_access_tokens
 
-供外部 OpenAPI 调用方使用的短期不透明访问令牌。原始令牌只在签发时返回一次，数据库仅保存其 SHA-256 哈希；`revoked_at` 为后续管理员手动撤销功能预留。
+供外部 OpenAPI 调用方使用的短期不透明访问令牌。原始令牌只在签发时返回一次，数据库仅保存其 SHA-256 哈希；同一用户同时最多保留一个有效令牌，重新签发会自动撤销此前有效令牌。管理员可通过 Web 管理页面手动撤销未撤销令牌。
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -232,7 +245,7 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 | scopes | Text | NOT NULL | JSON 格式的 scope 列表 |
 | created_at | DateTime | NOT NULL | 签发时间 |
 | expires_at | DateTime | NOT NULL, INDEX | 过期时间 |
-| revoked_at | DateTime | NULLABLE | 预留的管理员撤销时间 |
+| revoked_at | DateTime | NULLABLE | 令牌撤销时间（管理员手动撤销或重新签发自动替换） |
 
 #### user_region_permissions
 
@@ -377,6 +390,15 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | POST | `/api/external/v1/auth/token` | 使用本地用户名密码签发短期外部 API 访问令牌 |
 
 外部 Token 为 `dcnp_ext_` 前缀的不透明随机字符串，与前端使用的 JWT 相互隔离。
+
+#### 管理员外部 API 访问令牌管理
+
+以下接口仅供管理员通过 Web 客户端使用，采用现有 JWT 认证和 `administrator` 角色校验；不属于对外 OpenAPI，也不会接受外部 API 访问令牌。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/external-access-tokens` | 列出未撤销、未过期令牌的元数据及所属用户启用状态；不返回原始 Token 或哈希 |
+| DELETE | `/api/external-access-tokens/{token_id}` | 管理员手动撤销尚未撤销的令牌；无论令牌是否过期或所属用户是否已停用，成功均返回 `204 No Content`；令牌不存在返回 `404`，已撤销返回 `409` |
 
 #### Region 与网络平面
 
@@ -567,7 +589,7 @@ flowchart TD
 
 #### 外部 API
 
-`/api/external/v1/*` 使用与业务 API 隔离的认证逻辑。当前仅提供外部 API 访问令牌签发接口：令牌通过用户名和密码在 `/api/external/v1/auth/token` 签发，采用 `dcnp_ext_` 前缀的不透明随机字符串；数据库只保存其哈希。外部业务资源接口将在后续版本接入该令牌校验逻辑。外部 API 访问令牌不能调用既有 `/api/*` 业务接口，JWT 也不能作为外部 API 访问令牌使用。
+`/api/external/v1/*` 使用与业务 API 隔离的认证逻辑。当前仅提供外部 API 访问令牌签发接口：令牌通过用户名和密码在 `/api/external/v1/auth/token` 签发，采用 `dcnp_ext_` 前缀的不透明随机字符串；数据库只保存其哈希。同一用户重新签发时，系统会自动撤销此前有效令牌。该单有效令牌策略由签发 Service 在同一请求事务内维护，当前数据库未对 `user_id` 设置有效令牌唯一约束。外部业务资源接口将在后续版本接入该令牌校验逻辑，届时会同时验证令牌哈希、过期时间、撤销状态和所属用户是否启用。外部 API 访问令牌不能调用既有 `/api/*` 业务接口，JWT 也不能作为外部 API 访问令牌使用。管理员手动撤销令牌的操作使用 Web JWT，审计日志记录实际管理员用户名，并标记 `operation_method=client`。
 
 | 角色 | 读权限 | 写权限 |
 |---|---|---|
@@ -580,7 +602,7 @@ flowchart TD
 2. `administrator` 不写 Region 内业务数据，避免全局管理员直接修改业务规划。
 3. `user` 不能管理用户、Region 元数据和全局配置。
 4. `administrator` 可以管理其他用户账号，但不能删除当前登录用户。
-5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
+5. 更新用户角色或停用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
 6. Excel 导入功能仅普通 `user` 可用；`administrator` 上传预览和确认导入都会被直接拒绝。普通用户的导入预览会将当前用户无权管理的 Region 行标记为错误行，并提示仅提供预览功能、不能实际导入；确认导入仍会二次检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
 7. 变更日志的 `operator` 统一使用当前登录用户 `username`；`operation_method` 标识操作方式为 `client`、`external_api` 或 `system`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
@@ -797,6 +819,7 @@ flowchart TD
 | `/backup-config` | BackupConfig.vue | 备份目标、定时任务、备份历史 |
 | `/profile` | Profile.vue | 当前用户账号信息、角色和 Region 授权 |
 | `/users` | Users.vue | 用户、角色和 Region 授权管理（administrator） |
+| `/external-access-tokens` | ExternalAccessTokens.vue | 未撤销、未过期令牌列表（包括所属用户已停用的令牌）与手动撤销（administrator） |
 
 路由守卫规则：
 

@@ -85,6 +85,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Users.vue'),
         meta: { title: '用户管理', adminOnly: true },
       },
+      {
+        path: 'external-access-tokens',
+        name: 'ExternalAccessTokens',
+        component: () => import('@/views/ExternalAccessTokens.vue'),
+        meta: { title: '外部 API 访问令牌', adminOnly: true },
+      },
     ],
   },
 ]

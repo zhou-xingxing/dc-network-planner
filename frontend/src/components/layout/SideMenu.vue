@@ -58,6 +58,10 @@
         <el-icon><User /></el-icon>
         <span>用户管理</span>
       </el-menu-item>
+      <el-menu-item v-if="appStore.isAdministrator" index="/external-access-tokens">
+        <el-icon><Key /></el-icon>
+        <span>外部 API 访问令牌</span>
+      </el-menu-item>
     </el-menu>
 
     <div class="sidebar-footer">
@@ -72,6 +76,7 @@ import {
   Clock,
   Connection,
   DataAnalysis, Location,
+  Key,
   Search,
   Setting,
   Upload,

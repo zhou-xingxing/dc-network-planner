@@ -29,7 +29,7 @@
 
 ## OpenAPI
 - [x] 获取Token接口
-- [ ] 管理员手动撤销Token
+- [x] 管理员手动撤销Token
 - [ ] scope设计
 - [ ] 查询IP接口
 - [ ] 批量导入接口

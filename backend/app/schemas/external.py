@@ -25,3 +25,13 @@ class ExternalTokenResponse(BaseModel):
     expires_in: int
     scope: list[ExternalTokenScope]
     expires_at: str
+
+
+class ExternalAccessTokenListItem(BaseModel):
+    """管理员页面展示的未撤销且未过期外部 API 访问令牌。"""
+
+    id: str
+    username: str
+    owner_is_active: bool
+    created_at: str
+    expires_at: str

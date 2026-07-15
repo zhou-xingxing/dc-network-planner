@@ -14,6 +14,7 @@ export function actionTag(action: string) {
     update: 'warning',
     delete: 'danger',
     import: 'primary',
+    revoke: 'warning',
   }
   return tags[action] || 'info'
 }
@@ -24,6 +25,7 @@ export function actionLabel(action: string) {
     update: '更新',
     delete: '删除',
     import: '导入',
+    revoke: '撤销',
   }
   return labels[action] || action
 }

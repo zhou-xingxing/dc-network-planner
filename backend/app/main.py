@@ -21,6 +21,7 @@ from app.routers import (
     backup,
     change_log,
     excel,
+    external_auth,
     lookup,
     network_plane_type,
     region,
@@ -94,6 +95,7 @@ app.include_router(region_plane.router)
 app.include_router(network_plane_type.router)
 app.include_router(lookup.router)
 app.include_router(excel.router)
+app.include_router(external_auth.router)
 app.include_router(change_log.router)
 app.include_router(stats.router)
 app.include_router(backup.router)

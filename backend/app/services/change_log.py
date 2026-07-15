@@ -52,6 +52,7 @@ def log_change(
     old_value: Optional[str] = None,
     new_value: Optional[str] = None,
     comment: Optional[str] = None,
+    operation_method: Optional[str] = None,
 ) -> ChangeLog:
     """记录一条变更日志。
 
@@ -66,10 +67,13 @@ def log_change(
         old_value: 变更前的值。
         new_value: 变更后的值。
         comment: 备注说明。
+        operation_method: 操作方式，默认为客户端；后台任务为 system。
 
     Returns:
         新创建的 ChangeLog 记录。
     """
+    resolved_operator = operator or "system"
+    resolved_operation_method = operation_method or ("system" if resolved_operator == "system" else "client")
     entry = ChangeLog(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -78,7 +82,8 @@ def log_change(
         field_name=field_name,
         old_value=old_value,
         new_value=new_value,
-        operator=operator or "system",
+        operator=resolved_operator,
+        operation_method=resolved_operation_method,
         comment=comment,
     )
     db.add(entry)

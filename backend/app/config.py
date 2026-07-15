@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production"  # JWT 签名密钥，生产环境必须更换
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # Access Token 有效期（分钟）
 
+    # --- 外部 OpenAPI 访问令牌 ---
+    EXTERNAL_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 外部 API 访问令牌有效期（分钟）
+
     # --- 初始管理员账户（仅首次启动时自动创建） ---
     BOOTSTRAP_ADMIN_USERNAME: str = "admin"  # 初始管理员登录用户名
     BOOTSTRAP_ADMIN_PASSWORD: str = "admin"  # 初始管理员登录密码

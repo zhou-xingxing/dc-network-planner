@@ -3,6 +3,7 @@ export function entityTypeLabel(entityType: string) {
     region: 'Region',
     network_plane_type: '网络平面类型',
     region_network_plane: 'Region 网络平面',
+    external_access_token: '外部 API 访问令牌',
   }
   return labels[entityType] || entityType
 }

@@ -10,6 +10,7 @@ export interface ChangeLog {
   old_value?: string | null
   new_value?: string | null
   operator: string
+  operation_method: string
   comment?: string | null
   created_at: DateTimeString
 }

@@ -14,6 +14,7 @@
             <el-option label="Region" value="region" />
             <el-option label="网络平面类型" value="network_plane_type" />
             <el-option label="Region 网络平面" value="region_network_plane" />
+            <el-option label="外部 API 访问令牌" value="external_access_token" />
           </el-select>
         </el-form-item>
         <el-form-item label="操作类型">
@@ -55,6 +56,13 @@
           </template>
         </el-table-column>
         <el-table-column prop="operator" label="操作者" width="100" />
+        <el-table-column prop="operation_method" label="操作方式" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain" :type="operationMethodTag(row.operation_method)">
+              {{ operationMethodLabel(row.operation_method) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="field_name" label="字段" width="100" />
         <el-table-column prop="old_value" label="旧值" min-width="200" show-overflow-tooltip />
         <el-table-column prop="new_value" label="新值" min-width="200" show-overflow-tooltip />
@@ -113,6 +121,24 @@ function resetFilters() {
   filters.operator = ''
   page.value = 1
   fetchData()
+}
+
+function operationMethodLabel(method: string) {
+  const labels: Record<string, string> = {
+    client: '客户端',
+    external_api: '外部 API',
+    system: '系统',
+  }
+  return labels[method] || method
+}
+
+function operationMethodTag(method: string) {
+  const tags: Record<string, 'success' | 'warning' | 'info'> = {
+    client: 'success',
+    external_api: 'warning',
+    system: 'info',
+  }
+  return tags[method] || 'info'
 }
 
 onMounted(fetchData)

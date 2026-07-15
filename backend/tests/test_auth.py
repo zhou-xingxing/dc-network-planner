@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.models.change_log import ChangeLog
+from app.models.external_access_token import ExternalAccessToken
 from app.models.user import User
 
 
@@ -37,6 +38,91 @@ def test_disabled_user_cannot_login(client, test_db):
 def test_invalid_token_returns_401(client):
     """携带无效 Bearer token 访问受保护接口时应返回 401。"""
     response = client.get("/api/regions", headers={"Authorization": "Bearer invalid"})
+    assert response.status_code == 401
+
+
+def test_external_token_can_be_issued_and_is_stored_as_hash(client, test_db):
+    """签发外部 Token 时仅保存哈希，并以外部 API 方式记录审计日志。"""
+    response = client.post(
+        "/api/external/v1/auth/token",
+        json={
+            "username": "admin",
+            "password": "admin",
+            "requested_scopes": ["network-plane:read"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["access_token"].startswith("dcnp_ext_")
+    assert body["expires_in"] == 30 * 60
+    assert body["scope"] == ["network-plane:read"]
+
+    session = Session(test_db)
+    try:
+        token = session.query(ExternalAccessToken).one()
+        assert token.token_hash != body["access_token"]
+        audit = (
+            session.query(ChangeLog)
+            .filter(ChangeLog.entity_type == "external_access_token", ChangeLog.action == "create")
+            .one()
+        )
+        assert audit.operator == "admin"
+        assert audit.operation_method == "external_api"
+    finally:
+        session.close()
+
+
+def test_external_token_creation_rejects_invalid_credentials(client):
+    """错误的用户名或密码不能签发外部 API 访问令牌。"""
+    for credentials in (
+        {"username": "unknown", "password": "admin"},
+        {"username": "admin", "password": "wrong-password"},
+    ):
+        response = client.post(
+            "/api/external/v1/auth/token",
+            json={**credentials, "requested_scopes": ["network-plane:read"]},
+        )
+
+        assert response.status_code == 401
+
+
+def test_disabled_user_cannot_create_external_token(client, test_db):
+    """被禁用的用户即使密码正确也不能签发外部 API 访问令牌。"""
+    session = Session(test_db)
+    try:
+        admin = session.query(User).filter(User.username == "admin").one()
+        admin.is_active = False
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.post(
+        "/api/external/v1/auth/token",
+        json={
+            "username": "admin",
+            "password": "admin",
+            "requested_scopes": ["network-plane:read"],
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_external_token_cannot_call_existing_web_api(client):
+    """外部 Token 不得越过认证边界调用既有 Web 业务接口。"""
+    external_token_response = client.post(
+        "/api/external/v1/auth/token",
+        json={
+            "username": "admin",
+            "password": "admin",
+            "requested_scopes": ["network-plane:read"],
+        },
+    ).json()
+
+    response = client.get(
+        "/api/regions", headers={"Authorization": f"Bearer {external_token_response['access_token']}"}
+    )
     assert response.status_code == 401
 
 
@@ -117,5 +203,6 @@ def test_audit_operator_comes_from_authenticated_user(client, admin_headers, tes
     try:
         entry = session.query(ChangeLog).filter(ChangeLog.entity_type == "region").one()
         assert entry.operator == "admin"
+        assert entry.operation_method == "client"
     finally:
         session.close()

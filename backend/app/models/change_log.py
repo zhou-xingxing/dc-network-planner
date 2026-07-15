@@ -30,5 +30,6 @@ class ChangeLog(Base):
     old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     operator: Mapped[str] = mapped_column(String(100), nullable=False)
+    operation_method: Mapped[str] = mapped_column(String(30), nullable=False, default="client", server_default="client")
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_db)

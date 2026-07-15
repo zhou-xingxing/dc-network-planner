@@ -15,6 +15,7 @@ class ChangeLogResponse(BaseModel):
     old_value: Optional[str] = None
     new_value: Optional[str] = None
     operator: str
+    operation_method: str
     comment: Optional[str] = None
     created_at: str
 

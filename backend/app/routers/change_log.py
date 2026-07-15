@@ -49,6 +49,7 @@ def list_change_logs(
                 old_value=cl.old_value,
                 new_value=cl.new_value,
                 operator=cl.operator,
+                operation_method=cl.operation_method,
                 comment=cl.comment,
                 created_at=format_datetime(cl.created_at),
             )

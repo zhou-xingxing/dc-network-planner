@@ -220,6 +220,20 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 
 本地账号表。系统启动时若 `users` 表为空，会创建一个 bootstrap administrator。
 
+#### external_access_tokens
+
+供外部 OpenAPI 调用方使用的短期不透明访问令牌。原始令牌只在签发时返回一次，数据库仅保存其 SHA-256 哈希；`revoked_at` 为后续管理员手动撤销功能预留。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | Token 记录 ID |
+| token_hash | String(64) | NOT NULL, UNIQUE, INDEX | 原始 Token 的 SHA-256 哈希 |
+| user_id | String(36) | NOT NULL, FK users.id, INDEX | 被委托的本地用户 |
+| scopes | Text | NOT NULL | JSON 格式的 scope 列表 |
+| created_at | DateTime | NOT NULL | 签发时间 |
+| expires_at | DateTime | NOT NULL, INDEX | 过期时间 |
+| revoked_at | DateTime | NULLABLE | 预留的管理员撤销时间 |
+
 #### user_region_permissions
 
 `user_region_permissions` 是用户与其被授权 Region 的权限关联表，用来表达普通 `user` 可写入哪些 Region 内的业务数据；
@@ -294,6 +308,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | old_value | Text | NULLABLE | JSON 或纯文本 |
 | new_value | Text | NULLABLE | JSON 或纯文本 |
 | operator | String(100) | NOT NULL | 操作者 |
+| operation_method | String(30) | NOT NULL, default=client | client/external_api/system |
 | comment | Text | NULLABLE | 备注 |
 | created_at | DateTime | NOT NULL, INDEX | 创建时间 |
 
@@ -354,6 +369,14 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | GET/POST | `/api/users` | 用户列表/创建用户（administrator） |
 | PUT/DELETE | `/api/users/{id}` | 更新/删除用户（administrator）；不允许删除当前登录用户 |
 | POST | `/api/users/{id}/reset-password` | 重置用户密码（administrator） |
+
+#### 外部 OpenAPI 认证
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/external/v1/auth/token` | 使用本地用户名密码签发短期外部 API 访问令牌 |
+
+外部 Token 为 `dcnp_ext_` 前缀的不透明随机字符串，与前端使用的 JWT 相互隔离。
 
 #### Region 与网络平面
 
@@ -538,7 +561,13 @@ flowchart TD
 
 ### 5.5 认证与权限
 
-除 `/api/health` 和 `/api/auth/login` 外，业务 API 均要求 `Authorization: Bearer <token>`。后端通过统一依赖解析当前用户，并在 Router 层做角色和 Region 授权校验。
+#### 业务 API
+
+除 `/api/health` 和 `/api/auth/login` 外，`/api/*` 业务接口要求 `Authorization: Bearer <JWT>`。JWT 由前端登录后保存并随请求携带；后端验证签名和有效期后，再按 Token 中的用户 ID 查询用户，确认账户仍处于启用状态。Router 层基于该用户的角色和 Region 授权执行最终权限校验。
+
+#### 外部 API
+
+`/api/external/v1/*` 使用与业务 API 隔离的认证逻辑。当前仅提供外部 API 访问令牌签发接口：令牌通过用户名和密码在 `/api/external/v1/auth/token` 签发，采用 `dcnp_ext_` 前缀的不透明随机字符串；数据库只保存其哈希。外部业务资源接口将在后续版本接入该令牌校验逻辑。外部 API 访问令牌不能调用既有 `/api/*` 业务接口，JWT 也不能作为外部 API 访问令牌使用。
 
 | 角色 | 读权限 | 写权限 |
 |---|---|---|
@@ -553,19 +582,14 @@ flowchart TD
 4. `administrator` 可以管理其他用户账号，但不能删除当前登录用户。
 5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
 6. Excel 导入功能仅普通 `user` 可用；`administrator` 上传预览和确认导入都会被直接拒绝。普通用户的导入预览会将当前用户无权管理的 Region 行标记为错误行，并提示仅提供预览功能、不能实际导入；确认导入仍会二次检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
-7. 变更日志的 `operator` 统一使用当前登录用户 `username`。
+7. 变更日志的 `operator` 统一使用当前登录用户 `username`；`operation_method` 标识操作方式为 `client`、`external_api` 或 `system`。
 8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
 ### 5.6 启动初始化
 
-应用启动时执行 `ensure_bootstrap_admin()`：当 `users` 表为空时，根据配置创建第一个 `administrator`。相关配置：
+应用启动时执行 `ensure_bootstrap_admin()`：仅当 `users` 表为空时，才根据 `BOOTSTRAP_ADMIN_USERNAME` 和 `BOOTSTRAP_ADMIN_PASSWORD` 创建第一个 `administrator`。已有用户时不会重置或覆盖任何账户。
 
-| 配置项 | 默认值 | 说明 |
-|---|---|---|
-| `JWT_SECRET_KEY` | `change-me-in-production` | token 签名密钥，生产环境必须覆盖 |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | 访问 token 有效期 |
-| `BOOTSTRAP_ADMIN_USERNAME` | `admin` | 初始管理员用户名 |
-| `BOOTSTRAP_ADMIN_PASSWORD` | `admin` | 初始管理员密码，生产环境必须覆盖 |
+上述配置的默认值、环境变量覆盖优先级和生产环境要求统一见[后端配置加载策略](#后端配置加载策略)。
 
 ## 6. 关键技术决策
 
@@ -803,6 +827,11 @@ Docker 部署可直接通过容器环境变量覆盖配置。
 
 | 配置项 | 默认值 | 说明 |
 |---|---:|---|
+| `JWT_SECRET_KEY` | `change-me-in-production` | JWT 签名密钥；生产环境必须覆盖 |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | 前端业务 API 使用的 JWT 有效期（分钟） |
+| `EXTERNAL_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | 外部 OpenAPI 访问 Token 的有效期（分钟） |
+| `BOOTSTRAP_ADMIN_USERNAME` | `admin` | 首次启动时创建的初始管理员用户名 |
+| `BOOTSTRAP_ADMIN_PASSWORD` | `admin` | 首次启动时创建的初始管理员密码；生产环境必须覆盖 |
 | `IMPORT_TTL_MINUTES` | `30` | Excel 导入预览数据在内存缓存中的保留时长，超时后确认导入会要求重新上传 |
 | `IMPORT_CACHE_MAXSIZE` | `100` | Excel 导入预览进程级缓存最多保留的预览会话数量，超过后按 TTLCache/LRU 策略淘汰 |
 | `LOG_LEVEL` | `INFO` | 系统日志级别 |

@@ -47,22 +47,32 @@ def create_external_access_token_for_user(
     user: User,
     requested_scopes: list[ExternalTokenScope],
 ) -> tuple[ExternalAccessToken, str]:
-    """为通过用户名密码认证的用户签发短期外部 API 访问令牌。"""
+    """为通过用户名密码认证的用户签发短期外部 API 访问令牌。
+
+    采用 UPDATE-first 策略：先通过一条 bulk UPDATE 直接撤销该用户所有有效令牌，
+    再查询被撤销的记录写入审计日志。该写操作会竞争 SQLite 写锁；并发事务通常会
+    等待持锁事务提交后继续执行，若等待超过锁超时时间则失败并回滚，从而避免两个
+    请求同时签发出有效令牌。
+    """
     scopes = _validate_requested_scopes(user, requested_scopes)
     now = to_db_datetime(utcnow())
+
+    # 第一步：bulk UPDATE 直接撤销；并发事务通常等待写锁，等待超时则失败并回滚
+    db.query(ExternalAccessToken).filter(
+        ExternalAccessToken.user_id == user.id,
+        ExternalAccessToken.revoked_at.is_(None),
+        ExternalAccessToken.expires_at > now,
+    ).update({"revoked_at": now}, synchronize_session="fetch")
+
+    # 第二步：查询刚刚被撤销的令牌，写入审计日志
     previous_tokens = (
         db.query(ExternalAccessToken)
         .filter(
             ExternalAccessToken.user_id == user.id,
-            ExternalAccessToken.revoked_at.is_(None),
-            ExternalAccessToken.expires_at > now,
+            ExternalAccessToken.revoked_at == now,
         )
         .all()
     )
-    for previous_token in previous_tokens:
-        previous_token.revoked_at = now
-    db.flush()
-
     for previous_token in previous_tokens:
         log_change(
             db,

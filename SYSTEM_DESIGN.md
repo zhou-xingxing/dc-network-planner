@@ -49,8 +49,8 @@ graph TB
 
     subgraph Backend["后端 (FastAPI)"]
         direction TB
-        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel · external-auth<br/>external-access-tokens · change-logs · stats · backup"]
-        Deps["Dependencies<br/>Bearer Token 认证 · 角色校验 · Region 授权校验"]
+        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel · external-auth<br/>external-lookup · external-access-tokens · change-logs · stats · backup"]
+        Deps["Dependencies<br/>Web JWT 认证 · 外部 API Token 认证 · scope 校验 · 角色校验 · Region 授权校验"]
         Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / excel / external_token / change_log / backup<br/>· 外部 API 访问令牌签发与管理员撤销<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
         Utils["Utils（工具函数）<br/>密码哈希与校验 · IP/CIDR 解析 · Excel 文件处理 · 时间转换"]
         Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / ExternalAccessToken / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
@@ -70,7 +70,7 @@ graph TB
 
 后端采用经典的三层架构：
 
-1. **Router 层** - API 端点定义，请求参数解析，HTTP 状态码转换和响应序列化。依赖 `get_db` 获取数据库会话，依赖 `get_current_user` / `require_administrator` / `ensure_region_business_write_allowed` 完成认证与授权；不直接访问 SQLAlchemy Model。
+1. **Router 层** - API 端点定义，请求参数解析，HTTP 状态码转换和响应序列化。依赖 `get_db` 获取数据库会话；Web 业务接口依赖 `get_current_user` / `require_administrator` / `ensure_region_business_write_allowed` 完成认证与授权，外部 OpenAPI 依赖 `get_external_api_actor` / `require_external_scope` 完成不透明访问令牌认证与 scope 授权；不直接访问 SQLAlchemy Model。
 2. **Service 层** - 核心业务逻辑和数据访问，包括 CIDR 重叠检测、变更日志记录、Excel 导入业务校验、列表聚合统计和响应所需业务上下文。Router 层调用 Service 层，Service 层操作 Model 层；同一请求链路中已获取并校验过的实体或上下文应继续复用，避免重复查询同一业务对象。Excel 工具函数只负责工作簿读写、表头匹配和单元格基础清理，空作用域默认 Global、VLAN 合法性等业务解释在 Service 层完成。
 3. **Model 层** - SQLAlchemy ORM 模型，定义数据表结构和关系。通过 Alembic 管理数据库迁移。
 
@@ -86,7 +86,66 @@ graph TB
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
 - **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、外部 API 访问令牌、备份、导入导出和统计响应
 
-### 3.3 单实例部署约束
+### 3.3 项目结构
+
+后端按 FastAPI 分层组织，目录职责如下：
+
+```text
+backend/
+├── app/
+│   ├── main.py                    # FastAPI 应用创建、全局中间件、异常处理和 Router 注册
+│   ├── dependencies.py            # Web JWT、外部 API Token、角色和 Region 权限依赖
+│   ├── routers/                   # HTTP API 路由层
+│   │   ├── auth.py                # Web 登录、当前用户和密码修改
+│   │   ├── external_auth.py       # 外部 OpenAPI 访问令牌签发
+│   │   ├── external_lookup.py     # 外部 OpenAPI IP/CIDR 查询
+│   │   ├── external_access_token.py # 管理员 Web 端外部令牌列表和撤销
+│   │   ├── lookup.py              # Web 端 IP/CIDR 查询
+│   │   ├── region.py / region_plane.py / network_plane_type.py
+│   │   ├── excel.py / backup.py / change_log.py / stats.py / user.py
+│   ├── services/                  # 业务逻辑和数据访问
+│   │   ├── auth.py                # Web JWT 签发与校验、本地账号密码认证
+│   │   ├── external_token.py      # 外部令牌签发、替换、撤销、认证解析和 scope 解析
+│   │   ├── lookup.py              # IP/CIDR 查询业务逻辑
+│   │   ├── region.py / region_plane.py / network_plane_type.py
+│   │   ├── excel.py / backup.py / backup_scheduler.py / restore_database.py
+│   ├── schemas/                   # Pydantic 请求/响应模型
+│   │   ├── external.py            # 外部 API token 请求/响应和 scope 类型
+│   │   ├── lookup.py              # lookup 查询结果响应模型
+│   │   └── 其他业务 schema
+│   ├── models/                    # SQLAlchemy ORM 模型
+│   └── utils/                     # IP、Excel、密码、时间等通用工具
+└── tests/
+    ├── conftest.py                # 独立内存 SQLite 与 FastAPI 依赖覆盖
+    ├── test_auth.py               # Web 登录、JWT、角色和 Region 权限
+    ├── test_external_auth.py      # 外部令牌签发、生命周期和通用 external API 鉴权
+    ├── test_external_lookup.py    # 外部 lookup 入口参数契约
+    ├── test_external_access_token_management.py # 管理员 Web 端外部令牌管理
+    ├── test_lookup.py             # lookup 业务逻辑完整回归
+    └── 其他业务测试
+```
+
+前端按业务页面、API 封装和类型定义组织：
+
+```text
+frontend/src/
+├── api/                           # Axios 请求封装，按业务领域拆分
+│   ├── request.ts                 # Axios 实例、基础错误处理和 Authorization 注入
+│   ├── auth.ts / users.ts
+│   ├── regions.ts / networkPlaneTypes.ts / lookup.ts
+│   ├── excel.ts / backup.ts / externalAccessTokens.ts
+├── views/                         # 路由页面组件
+│   ├── Lookup.vue / Regions.vue / RegionDetail.vue
+│   ├── ImportExport.vue / BackupConfig.vue / ChangeLogs.vue
+│   ├── ExternalAccessTokens.vue / Users.vue / Profile.vue / Dashboard.vue
+├── types/                         # 跨层业务类型定义
+├── components/layout/             # 应用布局和侧边栏导航
+├── stores/                        # Pinia 全局状态
+├── router/                        # Vue Router 路由与守卫
+└── utils/                         # 前端展示和树结构辅助函数
+```
+
+### 3.4 单实例部署约束
 
 当前系统按单个后端服务实例部署设计，不支持多个后端进程或多个后端容器同时接入同一个数据库并通过负载均衡对外服务。
 
@@ -391,6 +450,14 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 
 外部 Token 为 `dcnp_ext_` 前缀的不透明随机字符串，与前端使用的 JWT 相互隔离。
 
+#### 外部 OpenAPI 业务接口
+
+以下接口使用 `Authorization: Bearer <外部 API 访问令牌>` 认证，不接受 Web JWT。每个接口在令牌生命周期校验通过后继续检查所需 scope。
+
+| 方法 | 路径 | 所需 scope | 说明 |
+|---|---|---|---|
+| GET | `/api/external/v1/lookup` | `network-plane:read` | IP/CIDR 查询；参数 `q` 必填，`cidr_match` 可选，取值为 `exact`（默认）或 `overlap` |
+
 #### 管理员外部 API 访问令牌管理
 
 以下接口仅供管理员通过 Web 客户端使用，采用现有 JWT 认证和 `administrator` 角色校验；不属于对外 OpenAPI，也不会接受外部 API 访问令牌。
@@ -589,7 +656,9 @@ flowchart TD
 
 #### 外部 API
 
-`/api/external/v1/*` 使用与业务 API 隔离的认证逻辑。当前仅提供外部 API 访问令牌签发接口：令牌通过用户名和密码在 `/api/external/v1/auth/token` 签发，采用 `dcnp_ext_` 前缀的不透明随机字符串；数据库只保存其哈希。同一用户重新签发时，系统会自动撤销此前有效令牌。该单有效令牌策略由签发 Service 在同一请求事务内维护，当前数据库未对 `user_id` 设置有效令牌唯一约束。外部业务资源接口将在后续版本接入该令牌校验逻辑，届时会同时验证令牌哈希、过期时间、撤销状态和所属用户是否启用。外部 API 访问令牌不能调用既有 `/api/*` 业务接口，JWT 也不能作为外部 API 访问令牌使用。管理员手动撤销令牌的操作使用 Web JWT，审计日志记录实际管理员用户名，并标记 `operation_method=client`。
+`/api/external/v1/*` 使用与业务 API 隔离的认证逻辑。令牌通过用户名和密码在 `/api/external/v1/auth/token` 签发，采用 `dcnp_ext_` 前缀的不透明随机字符串；数据库只保存其哈希。同一用户重新签发时，系统会自动撤销此前有效令牌。该单有效令牌策略由签发 Service 在同一请求事务内维护，当前数据库未对 `user_id` 设置有效令牌唯一约束。
+
+外部业务资源接口通过 `get_external_api_actor` 和 `require_external_scope` 复用鉴权逻辑。认证时先要求 `Authorization: Bearer <token>`，再校验令牌前缀、哈希、撤销状态、过期时间和所属用户是否仍启用；授权时按接口声明检查 scope，并复用既有业务查询能力。外部 API 访问令牌不能调用既有 `/api/*` Web 业务接口，JWT 也不能作为外部 API 访问令牌使用。管理员手动撤销令牌的操作使用 Web JWT，审计日志记录实际管理员用户名，并标记 `operation_method=client`。
 
 | 角色 | 读权限 | 写权限 |
 |---|---|---|

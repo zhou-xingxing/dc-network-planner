@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal, TypedDict
 
@@ -15,20 +16,10 @@ from app.models.user import User
 from app.services.change_log import log_change
 from app.utils.time_utils import format_datetime, to_db_datetime, utcnow
 
-ExternalTokenScope = Literal[
-    "network-plane:read",
-    "network-plane:import-preview",
-    "network-plane:import-apply",
-]
+ExternalTokenScope = Literal["network-plane:read"]
 
 EXTERNAL_TOKEN_PREFIX = "dcnp_ext_"
-ALL_EXTERNAL_SCOPES: frozenset[str] = frozenset(
-    {
-        "network-plane:read",
-        "network-plane:import-preview",
-        "network-plane:import-apply",
-    }
-)
+ALL_EXTERNAL_SCOPES: frozenset[str] = frozenset({"network-plane:read"})
 ADMIN_EXTERNAL_SCOPES: frozenset[str] = frozenset({"network-plane:read"})
 
 
@@ -40,6 +31,15 @@ class ExternalAccessTokenResponseData(TypedDict):
     owner_is_active: bool
     created_at: str
     expires_at: str
+
+
+@dataclass(frozen=True)
+class ExternalApiActor:
+    """通过外部 API 访问令牌认证后的调用身份。"""
+
+    token: ExternalAccessToken
+    user: User
+    scopes: frozenset[str]
 
 
 def create_external_access_token_for_user(
@@ -109,6 +109,35 @@ def create_external_access_token_for_user(
         operation_method="external_api",
     )
     return token, raw_token
+
+
+def resolve_external_api_actor(db: Session, raw_token: str) -> ExternalApiActor | None:
+    """解析并校验外部 API 访问令牌，失败时不暴露具体原因。"""
+    if not raw_token.startswith(EXTERNAL_TOKEN_PREFIX):
+        return None
+
+    now = to_db_datetime(utcnow())
+    row = (
+        db.query(ExternalAccessToken, User)
+        .join(User, ExternalAccessToken.user_id == User.id)
+        .filter(
+            ExternalAccessToken.token_hash == _hash_token(raw_token),
+            ExternalAccessToken.revoked_at.is_(None),
+            ExternalAccessToken.expires_at > now,
+        )
+        .first()
+    )
+    if not row:
+        return None
+
+    token, user = row
+    if not user.is_active:
+        return None
+
+    scopes = _parse_stored_scopes(token.scopes)
+    if scopes is None:
+        return None
+    return ExternalApiActor(token=token, user=user, scopes=scopes)
 
 
 def list_unrevoked_unexpired_external_access_tokens(
@@ -185,6 +214,19 @@ def _validate_requested_scopes(user: User, requested_scopes: list[ExternalTokenS
     if not requested.issubset(allowed_scopes):
         raise BusinessError("当前用户无权申请所请求的外部 API 权限")
     return requested
+
+
+def _parse_stored_scopes(scopes_raw: str) -> frozenset[str] | None:
+    try:
+        loaded = json.loads(scopes_raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(loaded, list) or not all(isinstance(scope, str) for scope in loaded):
+        return None
+    scopes = frozenset(loaded)
+    if not scopes.issubset(ALL_EXTERNAL_SCOPES):
+        return None
+    return scopes
 
 
 def _hash_token(raw_token: str) -> str:

@@ -28,8 +28,8 @@
 
         <el-form-item label="备份方式" prop="method">
           <el-radio-group v-model="form.method">
-            <el-radio-button label="local">本地文件</el-radio-button>
-            <el-radio-button label="object_storage">对象存储</el-radio-button>
+            <el-radio-button value="local">本地文件</el-radio-button>
+            <el-radio-button value="object_storage">对象存储</el-radio-button>
           </el-radio-group>
         </el-form-item>
 

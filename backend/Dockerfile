@@ -32,8 +32,9 @@ COPY --from=builder /app/app /app/app
 COPY --from=builder /app/alembic.ini /app/alembic.ini
 COPY --from=builder /app/alembic /app/alembic
 
-# Default database path (can be overridden by env var)
+# Default persistent data paths (can be overridden by env vars)
 ENV DATABASE_URL=sqlite:////app/data/dc_network_planner.db
+ENV BACKUP_DEFAULT_LOCAL_PATH=/app/data/backups
 ENV LOG_DIR=/app/data/logs
 
 # Health check
@@ -43,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
 EXPOSE 8000
 
 # Run migrations and start server
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

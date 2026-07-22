@@ -8,8 +8,10 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:////app/data/dc_network_planner.db
+      - BACKUP_DEFAULT_LOCAL_PATH=/app/data/backups
       - LOG_DIR=/app/data/logs
     volumes:
+      # 持久化 SQLite 主库、系统日志和本地备份文件
       - dc-network-planner-data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]

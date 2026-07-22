@@ -1,12 +1,15 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.database import Base
+from alembic import context
+from app.database import Base, engine
 from app.models import *  # noqa: F401, F403 - ensure all models are loaded
 
 config = context.config
+# 与应用复用同一数据库地址，避免 Docker 中迁移库与业务库路径不一致。
+database_url = engine.url.render_as_string(hide_password=False)
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

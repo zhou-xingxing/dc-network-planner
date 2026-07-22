@@ -317,7 +317,7 @@ cp -n .env.example .env
 | `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须改成高强度随机值 |
 | `BOOTSTRAP_ADMIN_USERNAME` | 初始管理员用户名，仅在 `users` 表为空时自动创建 |
 | `BOOTSTRAP_ADMIN_PASSWORD` | 初始管理员密码，仅在 `users` 表为空时自动创建 |
-| `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录 |
+| `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录；本地开发默认 `backend/backups`，Docker 默认 `/app/data/backups` |
 | `BACKUP_SCHEDULER_INTERVAL_SECONDS` | 后台备份调度扫描周期 |
 | `LOG_LEVEL` | 系统日志级别，默认 `INFO` |
 | `LOG_DIR` | 系统日志目录；相对路径固定到 `backend/` 下，默认 `backend/logs` |
@@ -327,7 +327,7 @@ cp -n .env.example .env
 | `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | 是否允许 CIDR 跨 Region 重叠；启动后不应变更 |
 | `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | 是否允许 VLAN 跨 Region 重复；启动后不应变更 |
 
-Docker 部署时也可以通过环境变量覆盖这些配置；Compose 默认将后端数据库写入持久化 volume。
+Docker 部署时也可以通过环境变量覆盖这些配置；Compose 默认将后端数据库、系统日志和本地备份写入持久化 volume。
 
 系统运行日志默认以 JSON Lines 写入 `backend/logs/app.log`，按大小轮转。HTTP 响应会返回 `X-Request-ID`，排障时可用文件搜索定位同一次调用链：
 
@@ -336,7 +336,7 @@ tail -f backend/logs/app.log
 rg "request-id-from-response" backend/logs/
 ```
 
-Docker Compose 部署时后端会把 `LOG_DIR` 设置为 `/app/data/logs`，日志随数据库一起保存在持久化 volume 中。
+Docker Compose 部署时，SQLite 主库、系统日志和本地备份分别保存到 `/app/data/dc_network_planner.db`、`/app/data/logs` 和 `/app/data/backups`，统一由 `dc-network-planner-data` volume 持久化。
 
 ## 运行测试 & 代码检查
 
@@ -422,7 +422,15 @@ docker compose up -d
 docker compose logs -f
 ```
 
-更详细的部署说明（架构图、分别构建、配置要点）见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 9 节「部署说明」。
+后端持久化数据统一保存在 `dc-network-planner-data` volume 挂载的 `/app/data` 目录：
+
+- SQLite 主库：`/app/data/dc_network_planner.db`
+- 系统日志：`/app/data/logs`
+- 本地备份：`/app/data/backups`
+
+`docker compose down` 会保留该命名卷；`docker compose down -v` 会连同数据库、日志和本地备份一起删除。
+
+更详细的部署说明（架构图、分别构建、配置要点）见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 8 节「部署说明」。
 
 ## CI/CD
 
@@ -439,11 +447,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 73 | 7,524 |
-| 后端测试 | 24 | 4,198 |
-| 前端代码 | 48 | 5,258 |
+| 后端代码 | 73 | 7,526 |
+| 后端测试 | 25 | 4,226 |
+| 前端代码 | 48 | 5,261 |
 | 前端测试 | 0 | 0 |
-| 合计 | 145 | 16,980 |
+| 合计 | 146 | 17,013 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

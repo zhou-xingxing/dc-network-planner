@@ -163,6 +163,8 @@ frontend/src/
 2. Excel 导入预览使用后端进程内 `TTLCache` 保存，`preview_id` 只能由生成它的实例确认导入
 3. 定时备份调度运行在后端进程内，多实例同时运行会产生重复调度风险
 
+本地开发默认使用 `DATABASE_URL=sqlite:///./dc_network_planner.db`。其中相对路径以后端服务进程的工作目录为基准；按常规方式从 `backend/` 目录启动时，项目运行使用的主数据库文件为 `backend/dc_network_planner.db`，与本地备份目录中的备份文件相互独立。
+
 因此部署时应保持一个后端实例运行；Docker Compose 不应横向扩展 `backend` 服务。若未来需要多实例部署，需要将数据库迁移到 PostgreSQL/MySQL 等外部数据库，将导入预览迁移到 Redis/数据库等共享存储，并为备份调度增加分布式锁或独立调度器。
 
 ## 4. 数据模型设计
@@ -815,6 +817,8 @@ flowchart TD
 
 **决策**：使用 `backup_configs` 保存全局备份配置，使用 `backup_records` 记录每次执行结果。FastAPI lifespan 启动轻量后台线程 `BackupScheduler`，按固定间隔检查 `next_run_at` 是否到期。
 
+**本地备份路径约定**：`local_path` 支持绝对路径和相对路径；相对路径以后端服务进程的工作目录为基准，按常规方式从 `backend/` 目录启动时即相对于 `backend/` 解析。Docker 镜像通过 `BACKUP_DEFAULT_LOCAL_PATH=/app/data/backups` 将默认本地备份目录放入持久化卷。
+
 **执行逻辑**：
 
 1. 应用启动时创建表并启动后台调度器
@@ -967,16 +971,19 @@ graph TB
 
         subgraph BE["backend (uvicorn)"]
             App["FastAPI App"]
-            DB[("SQLite (/data)<br/>dc_network_planner.db")]
+            DB[("SQLite<br/>/app/data/dc_network_planner.db")]
+            LocalBackups[("本地备份<br/>/app/data/backups/")]
             App --> DB
+            App --> LocalBackups
         end
 
-        Vol[/"Volume / Bind Mount<br/>/app/data（持久化数据库）"/]
+        Vol[/"Volume / Bind Mount<br/>/app/data（数据库、日志、本地备份）"/]
     end
 
     SPA -.静态资源.-> ProxyAPI
     ProxyAPI -->|Nginx /api 路由<br/>转发到 backend:8000| App
     DB -.挂载.-> Vol
+    LocalBackups -.挂载.-> Vol
 ```
 
 ### Docker 部署
@@ -997,12 +1004,13 @@ services:
     ports: ["8000:8000"]
     environment:
       - DATABASE_URL=sqlite:////app/data/dc_network_planner.db
+      - BACKUP_DEFAULT_LOCAL_PATH=/app/data/backups
       - LOG_DIR=/app/data/logs
       - JWT_SECRET_KEY=please-change-me
       - BOOTSTRAP_ADMIN_USERNAME=admin
       - BOOTSTRAP_ADMIN_PASSWORD=please-change-me
     volumes:
-      - dc-network-planner-data:/app/data    # 数据库和系统日志持久化
+      - dc-network-planner-data:/app/data    # 数据库、系统日志和本地备份持久化
     healthcheck:
       test: curl http://localhost:8000/api/health
 
@@ -1040,7 +1048,7 @@ docker run -d --name dc-network-planner-frontend -p 80:80 \
 ### Docker 设计要点
 
 1. **多阶段构建**：builder 阶段安装依赖和编译，runtime 阶段仅包含运行所需，减小镜像体积
-2. **数据库持久化**：后端通过 `DATABASE_URL` 将数据库路径指向 `/app/data/`，通过 Docker volume 或 bind mount 持久化
+2. **数据持久化**：后端将 SQLite 主库、系统日志和本地备份分别写入 `/app/data/dc_network_planner.db`、`/app/data/logs` 和 `/app/data/backups`，通过 Docker volume 或 bind mount 统一持久化；Alembic 启动时使用应用解析后的同一数据库 URL，`alembic.ini` 不再维护独立地址，确保迁移和 FastAPI 访问同一个数据库文件；`docker compose down -v` 会删除命名卷及其中全部数据
 3. **前端代理**：Nginx 在容器启动时通过 `BACKEND_URL` 环境变量（envsubst）配置后端代理地址，支持运行时配置无需重新构建
 4. **健康检查**：后端配置 `HEALTHCHECK` 确保服务可用后才接受流量
 5. **构建缓存与可重复安装**：`requirements.txt`、`package.json` 和 `package-lock.json` 在源码之前复制；前端镜像使用 `npm ci` 按锁定依赖安装

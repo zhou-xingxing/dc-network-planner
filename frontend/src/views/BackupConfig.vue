@@ -46,6 +46,9 @@
 
         <el-form-item v-if="form.method === 'local'" label="本地路径" prop="local_path">
           <el-input v-model="form.local_path" placeholder="./backups" clearable />
+          <div class="form-tip">
+            支持绝对路径和相对路径；相对路径以后端服务进程的工作目录为基准（通常为 backend 目录）
+          </div>
         </el-form-item>
 
         <template v-else>

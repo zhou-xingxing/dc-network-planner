@@ -36,161 +36,22 @@ DC Network Planner 是面向数据中心网络平面地址规划的 Web 管理�
 
 ## 部署约束
 
-当前后端服务按**单实例部署**设计，不支持将多个后端进程或多个后端容器同时接入同一个数据库并通过负载均衡对外服务。请不要使用 `docker compose up --scale backend=2` 或类似方式横向扩展后端。
-
-这个约束来自当前的 MVP 技术取舍：数据库使用本地 SQLite 文件，Excel 导入预览使用后端进程内缓存，定时备份调度也运行在后端进程内。若未来需要多实例部署，需要先切换到外部数据库、分布式缓存，并为后台调度任务增加跨实例协调机制。
-
+> **当前后端仅支持单实例部署。** 请勿通过 `docker compose up --scale backend=2` 或类似方式横向扩展后端。约束原因和未来多实例演进条件见 [SYSTEM_DESIGN.md 的「单实例部署约束」](SYSTEM_DESIGN.md#34-单实例部署约束)。
 
 ## 项目结构
 
-```
+```text
 ./
-├── backend/                              # Python FastAPI 后端
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                       # FastAPI 应用入口 + CORS + 路由注册
-│   │   ├── config.py                     # 应用配置与 backend/.env 加载
-│   │   ├── database.py                   # SQLAlchemy 引擎 + 会话工厂
-│   │   ├── dependencies.py               # 认证、权限和 DB 依赖
-│   │   ├── exceptions.py                 # 业务异常定义
-│   │   ├── models/                       # SQLAlchemy ORM 数据模型
-│   │   │   ├── __init__.py
-│   │   │   ├── region.py                 # Region 模型
-│   │   │   ├── network_plane_type.py     # 网络平面类型模型
-│   │   │   ├── region_network_plane.py   # Region 网络平面实例模型
-│   │   │   ├── change_log.py             # 变更日志模型
-│   │   │   ├── user.py                   # 本地用户、角色和 Region 授权模型
-│   │   │   └── backup.py                 # 备份配置与备份记录模型
-│   │   ├── schemas/                      # Pydantic 请求/响应验证
-│   │   │   ├── __init__.py
-│   │   │   ├── common.py                 # 通用响应 (PaginatedResponse)
-│   │   │   ├── region.py                 # Region 相关 Schema
-│   │   │   ├── region_plane.py           # Region 网络平面 Schema
-│   │   │   ├── network_plane_type.py     # 网络平面类型 Schema
-│   │   │   ├── change_log.py             # 变更日志 Schema
-│   │   │   ├── lookup.py                 # IP 查找 Schema
-│   │   │   ├── excel.py                  # Excel/统计 Schema
-│   │   │   ├── user.py                   # 用户、角色和权限 Schema
-│   │   │   └── backup.py                 # 备份配置和记录 Schema
-│   │   ├── routers/                      # API 路由
-│   │   │   ├── __init__.py
-│   │   │   ├── auth.py                   # 登录和当前用户 API
-│   │   │   ├── region.py                 # Region API
-│   │   │   ├── region_plane.py           # Region 网络平面 API
-│   │   │   ├── network_plane_type.py     # 网络平面类型 API
-│   │   │   ├── lookup.py                 # IP/CIDR 查找 API
-│   │   │   ├── excel.py                  # Excel 导入/导出 API
-│   │   │   ├── change_log.py             # 变更日志查询 API
-│   │   │   ├── stats.py                  # 统计 API
-│   │   │   ├── user.py                   # 用户管理 API
-│   │   │   └── backup.py                 # 备份配置和执行 API
-│   │   ├── services/                     # 业务逻辑层
-│   │   │   ├── __init__.py
-│   │   │   ├── change_log.py             # 变更日志记录工具
-│   │   │   ├── region.py                 # Region 业务逻辑
-│   │   │   ├── region_plane.py           # Region 网络平面实例逻辑
-│   │   │   ├── network_plane_type.py     # 网络平面类型业务逻辑
-│   │   │   ├── lookup.py                 # IP/CIDR 查找逻辑
-│   │   │   ├── excel.py                  # Excel 导入预览/确认逻辑
-│   │   │   ├── auth.py                   # 登录认证和 JWT 逻辑
-│   │   │   ├── user.py                   # 用户管理和权限序列化逻辑
-│   │   │   ├── backup.py                 # 备份配置、校验和执行逻辑
-│   │   │   └── backup_scheduler.py       # 后台备份调度器
-│   │   └── utils/                        # 工具函数
-│   │       ├── __init__.py
-│   │       ├── password.py               # 密码哈希与校验
-│   │       ├── ip_utils.py               # IP/CIDR 解析、重叠检测
-│   │       ├── excel_utils.py            # Excel 模板生成、导入解析、导出构建
-│   │       └── time_utils.py             # UTC 存储与应用时区转换
-│   ├── alembic/                          # 数据库迁移
-│   │   ├── env.py                        # Alembic 环境配置 (render_as_batch=True)
-│   │   ├── script.py.mako                # 迁移脚本模板
-│   │   └── versions/                     # 迁移版本文件（初始表、认证、备份、平面树、scope 等）
-│   ├── alembic.ini                       # Alembic 配置
-│   ├── .env.example                      # 后端环境变量示例，复制为 .env 后使用
-│   ├── requirements.txt                  # Python 依赖
-│   ├── pyproject.toml                    # Python 项目配置
-│   ├── Makefile                          # make lint / make test / make check
-│   ├── run_tests.sh                      # 测试运行脚本
-│   ├── run_checks.sh                     # 代码检查脚本
-│   ├── scripts/                          # 后端运维脚本
-│   │   ├── seed.py                       # 种子数据脚本
-│   │   └── restore_database.py           # 数据库恢复脚本
-│   └── start.sh                          # 后端启动脚本
-│
-├── frontend/                             # Vue 3 + TypeScript 前端
-│   ├── public/
-│   ├── src/
-│   │   ├── main.ts                       # 应用入口 (注册插件)
-│   │   ├── env.d.ts                      # Vite / Vue 类型声明
-│   │   ├── App.vue                       # 根组件
-│   │   ├── api/                          # Axios API 封装（TypeScript 类型化）
-│   │   │   ├── request.ts                # Axios 实例 + 拦截器
-│   │   │   ├── auth.ts                   # 登录和当前用户 API
-│   │   │   ├── regions.ts                # Region + 网络平面 API
-│   │   │   ├── networkPlaneTypes.ts      # 网络平面类型 API
-│   │   │   ├── lookup.ts                 # IP 查找 API
-│   │   │   ├── excel.ts                  # Excel 导入/导出 + 统计 + 变更日志 API
-│   │   │   ├── users.ts                  # 用户管理 API
-│   │   │   └── backup.ts                 # 备份配置和执行 API
-│   │   ├── assets/styles/
-│   │   │   └── main.css                  # 全局样式
-│   │   ├── components/
-│   │   │   └── layout/
-│   │   │       ├── AppLayout.vue         # 布局组件 (侧边栏 + 顶栏 + 内容区)
-│   │   │       └── SideMenu.vue          # 侧边导航菜单
-│   │   ├── router/
-│   │   │   └── index.ts                  # 路由定义（登录 + 9 个业务页面，懒加载）
-│   │   ├── stores/
-│   │   │   └── app.ts                    # Pinia 状态（登录态、当前用户、侧边栏）
-│   │   ├── types/                        # 前端业务类型定义
-│   │   ├── utils/
-│   │   │   └── time.ts                   # 前端时间格式化
-│   │   └── views/
-│   │       ├── Login.vue                 # 登录页
-│   │       ├── Dashboard.vue             # 仪表盘
-│   │       ├── Regions.vue               # 区域管理
-│   │       ├── RegionDetail.vue          # 区域详情 + 网络平面管理
-│   │       ├── PlaneTypes.vue            # 网络平面类型管理
-│   │       ├── Lookup.vue                # IP 查找
-│   │       ├── ImportExport.vue          # 导入 / 导出
-│   │       ├── ChangeLogs.vue            # 变更历史
-│   │       ├── BackupConfig.vue          # 备份配置
-│   │       └── Users.vue                 # 用户管理
-│   ├── index.html
-│   ├── package.json                      # NPM 依赖
-│   ├── package-lock.json                 # NPM 锁定依赖
-│   ├── eslint.config.js                  # ESLint 配置
-│   ├── tsconfig.json                     # TypeScript 配置
-│   ├── vite.config.ts                    # Vite 配置 (含 API 代理)
-│   ├── .env.development                  # 开发环境变量
-│   ├── run_build.sh                      # 前端构建脚本
-│   └── start.sh                          # 前端启动脚本
-│
-├── scripts/
-│   └── count_code_lines.py               # README 代码行统计脚本
-├── .pre-commit-config.yaml               # pre-commit 配置
-├── .gitignore
-├── AGENTS.md                             # Agent 工作约定
-├── CLAUDE.md                             # Claude 工作约定
-├── TODO.md                               # 待办事项
-├── SYSTEM_DESIGN.md                      # 系统架构设计文档
-└── README.md                             # 项目说明
+├── backend/                 # FastAPI 后端、数据库迁移、测试和运维脚本
+├── frontend/                # Vue 3 前端和 Nginx 容器配置
+├── scripts/                 # 仓库级辅助脚本
+├── .github/workflows/       # GitHub Actions 工作流
+├── docker-compose.yml       # 本地一键部署编排
+├── README.md                # 快速使用说明
+└── SYSTEM_DESIGN.md         # 系统设计决策
 ```
 
-Docker 部署文件：
-
-```
-./
-├── docker-compose.yml                    # Docker Compose 编排
-├── backend/
-│   ├── Dockerfile                        # 后端 Docker 镜像
-│   └── .dockerignore
-└── frontend/
-    ├── Dockerfile                        # 前端 Docker 镜像
-    ├── nginx.conf                        # Nginx 配置 (API 代理 + SPA 路由)
-    └── .dockerignore
-```
+后端分层、前端目录职责和关键入口见 [SYSTEM_DESIGN.md 的「项目结构」](SYSTEM_DESIGN.md#33-项目结构)。
 
 ## 启动方式
 
@@ -267,14 +128,6 @@ npm install
 npm run dev -- --host 0.0.0.0
 ```
 
-前端改动提交前建议执行：
-
-```bash
-npm run lint
-npm run type-check
-npm run build
-```
-
 启动验证：
 - 本机访问：http://localhost:5173 或 http://127.0.0.1:5173
 - 局域网访问：使用 Vite 输出的 Network 地址
@@ -307,27 +160,18 @@ cd ./backend
 cp -n .env.example .env
 ```
 
-常用配置项：
+生产部署前至少确认以下配置：
 
 | 配置项 | 说明 |
 |---|---|
-| `DATABASE_URL` | SQLAlchemy 数据库连接地址，本地默认使用 `backend/dc_network_planner.db` |
-| `APP_TIMEZONE` | 应用业务时区，用于解释定时备份 cron 等业务时间 |
-| `IMPORT_TTL_MINUTES` | Excel 导入预览数据在内存缓存中的保留时长，超时后需重新上传 |
 | `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须改成高强度随机值 |
 | `BOOTSTRAP_ADMIN_USERNAME` | 初始管理员用户名，仅在 `users` 表为空时自动创建 |
 | `BOOTSTRAP_ADMIN_PASSWORD` | 初始管理员密码，仅在 `users` 表为空时自动创建 |
+| `DATABASE_URL` | SQLAlchemy 数据库连接地址，本地默认使用 `backend/dc_network_planner.db` |
+| `APP_TIMEZONE` | 应用业务时区，用于解释定时备份 cron 等业务时间 |
 | `BACKUP_DEFAULT_LOCAL_PATH` | 本地备份默认目录；本地开发默认 `backend/backups`，Docker 默认 `/app/data/backups` |
-| `BACKUP_SCHEDULER_INTERVAL_SECONDS` | 后台备份调度扫描周期 |
-| `LOG_LEVEL` | 系统日志级别，默认 `INFO` |
-| `LOG_DIR` | 系统日志目录；相对路径固定到 `backend/` 下，默认 `backend/logs` |
-| `LOG_FILE_NAME` | 系统日志主文件名，默认 `app.log` |
-| `LOG_MAX_BYTES` | 单个日志文件最大字节数，超出后轮转 |
-| `LOG_BACKUP_COUNT` | 轮转日志保留文件数 |
-| `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | 是否允许 CIDR 跨 Region 重叠；启动后不应变更 |
-| `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | 是否允许 VLAN 跨 Region 重复；启动后不应变更 |
 
-Docker 部署时也可以通过环境变量覆盖这些配置；Compose 默认将后端数据库、系统日志和本地备份写入持久化 volume。
+导入预览缓存、日志轮转、CORS 和跨 Region CIDR/VLAN 重叠策略等可选配置见 [`backend/.env.example`](backend/.env.example)。完整字段和默认值以 [`backend/app/config.py`](backend/app/config.py) 中的 `Settings` 为准；配置覆盖优先级和启动期静态配置的设计见 [SYSTEM_DESIGN.md 的「后端配置加载策略」](SYSTEM_DESIGN.md#后端配置加载策略)。Docker 部署可以直接通过容器环境变量覆盖配置。
 
 系统运行日志默认以 JSON Lines 写入 `backend/logs/app.log`，按大小轮转。HTTP 响应会返回 `X-Request-ID`，排障时可用文件搜索定位同一次调用链：
 
@@ -338,9 +182,45 @@ rg "request-id-from-response" backend/logs/
 
 Docker Compose 部署时，SQLite 主库、系统日志和本地备份分别保存到 `/app/data/dc_network_planner.db`、`/app/data/logs` 和 `/app/data/backups`，统一由 `dc-network-planner-data` volume 持久化。
 
-## 运行测试 & 代码检查
+## API 文档
 
-### 代码检查
+启动后端后可访问：
+
+- http://localhost:8000/docs：Swagger UI，支持在线调试。
+- http://localhost:8000/redoc：ReDoc，适合阅读和查阅接口定义。
+
+文档仅展示 External API，并支持无外网环境访问。OpenAPI Schema 地址为 http://localhost:8000/api/external/v1/openapi.json。
+
+## Docker 部署
+
+需要 Docker >= 24.0 和 Docker Compose >= 2.0。
+
+```bash
+# 一键部署（推荐）
+docker compose up -d
+docker compose logs -f
+```
+
+后端持久化数据统一保存在 `dc-network-planner-data` volume 挂载的 `/app/data` 目录：
+
+- SQLite 主库：`/app/data/dc_network_planner.db`
+- 系统日志：`/app/data/logs`
+- 本地备份：`/app/data/backups`
+
+`docker compose down` 会保留该命名卷；`docker compose down -v` 会连同数据库、日志和本地备份一起删除。
+
+部署拓扑、持久化和镜像设计见 [SYSTEM_DESIGN.md 的「部署说明」](SYSTEM_DESIGN.md#8-部署说明)。服务编排的实际配置以 [`docker-compose.yml`](docker-compose.yml) 为准。
+
+## CI/CD
+
+提交到 `main` 或发起针对 `main` 的 Pull Request 时会自动执行后端门禁、前端门禁和 Docker 镜像构建验证。精确触发条件与命令以 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 为准，流程设计和镜像发布策略见 [SYSTEM_DESIGN.md 的「CI/CD 设计」](SYSTEM_DESIGN.md#9-cicd-设计)。
+
+## 开发与贡献
+
+<details>
+<summary><strong>展开查看测试、代码检查与 pre-commit 命令</strong></summary>
+
+### 后端代码检查
 
 ```bash
 cd ./backend
@@ -350,7 +230,7 @@ bash run_checks.sh
 # 或: make lint
 ```
 
-### 运行全部测试
+### 运行全部后端测试
 
 ```bash
 cd ./backend
@@ -358,14 +238,14 @@ source venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-或使用测试脚本（会自动激活虚拟环境）：
+也可以使用测试脚本自动激活虚拟环境：
 
 ```bash
 cd ./backend
 bash run_tests.sh
 ```
 
-### 完整门禁
+### 后端完整门禁
 
 ```bash
 cd ./backend
@@ -386,6 +266,8 @@ make coverage
 
 ### 运行单个测试文件
 
+以下命令在 `backend/` 目录执行：
+
 ```bash
 source venv/bin/activate
 python -m pytest tests/test_regions.py -v
@@ -393,9 +275,20 @@ python -m pytest tests/test_regions.py -v
 
 ### 运行单个测试用例
 
+以下命令在 `backend/` 目录执行：
+
 ```bash
 source venv/bin/activate
 python -m pytest tests/test_regions.py::test_create_region -v
+```
+
+### 前端完整门禁
+
+```bash
+cd ./frontend
+npm run lint
+npm run type-check
+npm run build
 ```
 
 ### pre-commit 钩子（可选）
@@ -405,42 +298,7 @@ python -m pytest tests/test_regions.py::test_create_region -v
 pre-commit install
 ```
 
-## API 文档
-
-启动后端后可访问：
-
-- http://localhost:8000/docs：Swagger UI，支持在线调试。
-- http://localhost:8000/redoc：ReDoc，适合阅读和查阅接口定义。
-
-文档仅展示 External API，并支持无外网环境访问。OpenAPI Schema 地址为 http://localhost:8000/api/external/v1/openapi.json。
-
-## Docker 部署
-
-```bash
-# 一键部署（推荐）
-docker compose up -d
-docker compose logs -f
-```
-
-后端持久化数据统一保存在 `dc-network-planner-data` volume 挂载的 `/app/data` 目录：
-
-- SQLite 主库：`/app/data/dc_network_planner.db`
-- 系统日志：`/app/data/logs`
-- 本地备份：`/app/data/backups`
-
-`docker compose down` 会保留该命名卷；`docker compose down -v` 会连同数据库、日志和本地备份一起删除。
-
-更详细的部署说明（架构图、分别构建、配置要点）见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 8 节「部署说明」。
-
-## CI/CD
-
-CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
-
-| Job | 内容 | 触发条件 |
-|---|---|---|
-| `backend-check` | 创建 Python venv → 安装依赖 → make check | 所有 push 和 PR |
-| `build-frontend` | npm ci → npm run lint → npm run type-check → npm run build | 所有 push 和 PR |
-| `docker-build` | Docker 构建验证；main 分支 push 或 tag 推送时同步推送到 GHCR | 所有 push 和 PR |
+</details>
 
 ## 代码行数统计
 

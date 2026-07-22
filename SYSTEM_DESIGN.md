@@ -88,70 +88,41 @@ graph TB
 
 ### 3.3 项目结构
 
-后端按 FastAPI 分层组织，目录职责如下：
+项目结构只记录稳定的分层职责，不逐一复制容易随功能变化的文件清单。具体文件以仓库当前目录为准。
 
 ```text
 backend/
 ├── app/
-│   ├── main.py                    # FastAPI 应用创建、全局中间件、异常处理和 Router 注册
-│   ├── openapi_docs.py            # 生成独立 External Schema 及本地 Swagger UI、ReDoc 页面
-│   ├── dependencies.py            # Web JWT、外部 API Token、角色和 Region 权限依赖
-│   ├── static/api_docs/           # 固定版本的 OpenAPI 文档前端资源及第三方许可证
-│   ├── routers/                   # HTTP API 路由层
-│   │   ├── auth.py                # Web 登录、当前用户和密码修改
-│   │   ├── external_auth.py       # 外部 OpenAPI 访问令牌签发
-│   │   ├── external_lookup.py     # 外部 OpenAPI IP/CIDR 查询
-│   │   ├── external_network_plane_type.py # 外部 OpenAPI 网络平面类型列表
-│   │   ├── external_access_token.py # 管理员 Web 端外部令牌列表和撤销
-│   │   ├── lookup.py              # Web 端 IP/CIDR 查询
-│   │   ├── region.py / region_plane.py / network_plane_type.py
-│   │   ├── excel.py / backup.py / change_log.py / stats.py / user.py
-│   ├── services/                  # 业务逻辑和数据访问
-│   │   ├── auth.py                # Web JWT 签发与校验、本地账号密码认证
-│   │   ├── external_token.py      # 外部令牌签发、替换、撤销、认证解析和 scope 解析
-│   │   ├── lookup.py              # IP/CIDR 查询业务逻辑
-│   │   ├── region.py / region_plane.py / network_plane_type.py
-│   │   ├── excel.py / backup.py / backup_scheduler.py / restore_database.py
-│   │   ├── change_log.py / stats.py / user.py
-│   ├── schemas/                   # Pydantic 请求/响应模型
-│   │   ├── external.py            # 外部 API token、网络平面类型响应和 scope 类型
-│   │   ├── lookup.py              # lookup 查询结果响应模型
-│   │   └── 其他业务 schema
+│   ├── main.py                    # 应用创建、中间件、异常处理和 Router 注册
+│   ├── config.py                  # 配置加载
+│   ├── database.py                # 数据库引擎和会话
+│   ├── dependencies.py            # 数据库、认证、角色、scope 和 Region 权限依赖
+│   ├── routers/                   # HTTP 边界与依赖注入
+│   ├── services/                  # 业务规则、事务内数据访问和审计调用
+│   ├── schemas/                   # Pydantic 请求与响应契约
 │   ├── models/                    # SQLAlchemy ORM 模型
-│   └── utils/                     # IP、Excel、密码、时间等通用工具
-└── tests/
-    ├── conftest.py                # 独立内存 SQLite 与 FastAPI 依赖覆盖
-    ├── test_auth.py               # Web 登录、JWT、角色和 Region 权限
-    ├── test_external_auth.py      # 外部令牌签发、生命周期和通用 external API 鉴权
-    ├── test_external_lookup.py    # 外部 lookup 入口参数契约
-    ├── test_external_network_plane_types.py # 外部网络平面类型响应契约
-    ├── test_external_access_token_management.py # 管理员 Web 端外部令牌管理
-    ├── test_lookup.py             # lookup 业务逻辑完整回归
-    ├── test_openapi_docs.py       # 独立 External Schema、文档页面和本地静态资源
-    └── 其他业务测试
+│   ├── utils/                     # IP、Excel、密码、时间等通用工具
+│   └── static/api_docs/           # 离线 OpenAPI 文档资源
+├── alembic/                       # 数据库迁移
+├── scripts/                       # seed、数据库恢复等非 HTTP 入口
+└── tests/                         # 独立内存 SQLite 的后端测试
 ```
-
-前端按业务页面、API 封装和类型定义组织：
 
 ```text
-frontend/src/
-├── api/                           # Axios 请求封装，按业务领域拆分
-│   ├── request.ts                 # Axios 实例、基础错误处理和 Authorization 注入
-│   ├── auth.ts / users.ts
-│   ├── regions.ts / networkPlaneTypes.ts / lookup.ts
-│   ├── excel.ts                   # Excel、统计和变更日志接口
-│   ├── backup.ts / externalAccessTokens.ts
-├── views/                         # 路由页面组件
-│   ├── Login.vue / Lookup.vue / Regions.vue / RegionDetail.vue
-│   ├── PlaneTypes.vue
-│   ├── ImportExport.vue / BackupConfig.vue / ChangeLogs.vue
-│   ├── ExternalAccessTokens.vue / Users.vue / Profile.vue / Dashboard.vue
-├── types/                         # 跨层业务类型定义
-├── components/layout/             # 应用布局和侧边栏导航
-├── stores/                        # Pinia 全局状态
-├── router/                        # Vue Router 路由与守卫
-└── utils/                         # 前端展示和树结构辅助函数
+frontend/
+├── src/
+│   ├── api/                       # Axios 请求封装，按业务领域拆分
+│   ├── views/                     # 路由页面组件，各页面自行获取业务数据
+│   ├── types/                     # 跨组件、跨层业务类型
+│   ├── components/                # 可复用组件和应用布局
+│   ├── stores/                    # 会话与少量全局 UI 状态
+│   ├── router/                    # Vue Router 路由与守卫
+│   └── utils/                     # 展示与树结构辅助函数
+├── public/                        # 静态资源
+└── nginx.conf                     # 容器内静态文件服务和 API 反向代理
 ```
+
+HTTP 请求遵循 `routers/ -> services/ -> models/`；Schema 只定义 API 数据形状，Service 承担业务校验和数据访问。非 HTTP 入口必须自行管理事务边界。
 
 ### 3.4 单实例部署约束
 
@@ -211,7 +182,7 @@ erDiagram
         text   description
         bool   is_private
         string vrf
-        string parent_id FK
+        string parent_id FK "RESTRICT"
         datetime created_at
         datetime updated_at
     }
@@ -727,7 +698,7 @@ flowchart TD
 
 **核心约束**：
 
-1. 添加或更新子类型平面时，父级类型必须已在同一 Region 中存在有效父实例。
+1. 在 Region 下创建或更新某个**子网络平面类型的实例**时，其父级网络平面类型必须在同一 Region 中已存在有效的父实例。
 2. 子类型平面优先挂载到同 `scope` 的父平面；如果同 `scope` 父平面不存在，允许回退挂载到 `Global` 父平面。回退挂载指子平面自身仍保留原 `scope`，但树形关系上挂在 `Global` 父平面下；其他作用域的父平面不可作为有效父级。
 3. 子类型平面的 CIDR 必须落在实际挂载父平面的 CIDR 范围内。
 4. Region 内 CIDR 不允许与非有效父子/祖先关系的网络平面重叠；有效父子/祖先关系允许 CIDR 包含关系，但子平面必须落在父平面范围内。CIDR 是否允许跨 Region 重叠由 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
@@ -923,11 +894,6 @@ flowchart TD
 
 ## 8. 部署说明
 
-### 环境要求
-
-- 开发环境：Python >= 3.12, Node.js >= 20
-- Docker 部署：Docker >= 24.0, Docker Compose >= 2.0
-
 ### 后端配置加载策略
 
 后端配置由 `backend/app/config.py` 中的 `Settings` 类统一定义，字段默认值也集中在该类中。`Settings`
@@ -942,22 +908,15 @@ Docker 部署可直接通过容器环境变量覆盖配置。
 
 网络重叠检测策略属于部署级静态配置，不通过数据库或前端页面修改。应用启动时会按当前配置校验已有数据；如果现有数据与更严格的配置不一致，后端启动失败，避免运行期才暴露历史数据冲突。启动期 CIDR 跨 Region 检查只比较根平面实例，因为子孙平面写入时已保证落在父级 CIDR 范围内。
 
-| 配置项 | 默认值 | 说明 |
-|---|---:|---|
-| `JWT_SECRET_KEY` | `change-me-in-production` | JWT 签名密钥；生产环境必须覆盖 |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | 前端业务 API 使用的 JWT 有效期（分钟） |
-| `EXTERNAL_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | 外部 OpenAPI 访问 Token 的有效期（分钟） |
-| `BOOTSTRAP_ADMIN_USERNAME` | `admin` | 首次启动时创建的初始管理员用户名 |
-| `BOOTSTRAP_ADMIN_PASSWORD` | `admin` | 首次启动时创建的初始管理员密码；生产环境必须覆盖 |
-| `IMPORT_TTL_MINUTES` | `30` | Excel 导入预览数据在内存缓存中的保留时长，超时后确认导入会要求重新上传 |
-| `IMPORT_CACHE_MAXSIZE` | `100` | Excel 导入预览进程级缓存最多保留的预览会话数量，超过后按 TTLCache/LRU 策略淘汰 |
-| `LOG_LEVEL` | `INFO` | 系统日志级别 |
-| `LOG_DIR` | `logs` | 系统日志目录；相对路径固定到 `backend/` 下 |
-| `LOG_FILE_NAME` | `app.log` | 系统日志主文件名 |
-| `LOG_MAX_BYTES` | `10485760` | 单个日志文件最大字节数，超出后轮转 |
-| `LOG_BACKUP_COUNT` | `10` | 轮转日志保留文件数 |
-| `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` | `false` | 是否允许 CIDR 跨 Region 重叠；Region 内父子/非父子重叠规则不变 |
-| `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` | `true` | 是否允许 VLAN ID 跨 Region 重复；同一 Region 内始终不能重复 |
+配置按职责分为以下几类：
+
+1. **安全与身份初始化**：JWT 密钥、Token 有效期和 bootstrap administrator 配置。安全默认值只用于本地启动，生产部署必须显式覆盖。
+2. **持久化与后台任务**：数据库地址、默认备份目录和备份调度扫描周期。相对数据库和备份路径以后端进程工作目录为基准；项目提供的启动入口统一从 `backend/` 运行。
+3. **进程内状态**：Excel 导入预览的 TTL 与容量上限。该类配置不能消除预览缓存的单实例边界。
+4. **运行诊断**：日志级别、目录、文件名、轮转大小和保留数量。日志格式与脱敏边界见[系统日志](#54-系统日志)。
+5. **启动期业务策略**：跨 Region CIDR/VLAN 重叠开关。启动完成后不应变更，否则配置可能与已有数据语义不一致。
+
+完整字段和默认值以 [`backend/app/config.py`](backend/app/config.py) 中的 `Settings` 为唯一事实来源；[`backend/.env.example`](backend/.env.example) 提供常用部署配置模板。用户需要执行的复制和修改步骤见 [README 的「配置说明」](README.md#配置说明)。
 
 ### Docker 部署架构
 
@@ -986,69 +945,16 @@ graph TB
     LocalBackups -.挂载.-> Vol
 ```
 
-### Docker 部署
+### Docker 运行入口与事实来源
 
-#### 方式一：Docker Compose（一键部署）
+[`docker-compose.yml`](docker-compose.yml) 是服务编排、环境变量注入、健康检查、依赖关系和重启策略的唯一事实来源；设计文档不复制完整 Compose YAML，避免实现变更后形成第二份配置。用户可直接执行的启动、查看日志和数据卷保留规则见 [README 的「Docker 部署」](README.md#docker-部署)。
 
-```bash
-docker compose up -d
-docker compose logs -f
-```
-
-各服务配置：
-
-```yaml
-services:
-  backend:
-    build: ./backend
-    ports: ["8000:8000"]
-    environment:
-      - DATABASE_URL=sqlite:////app/data/dc_network_planner.db
-      - BACKUP_DEFAULT_LOCAL_PATH=/app/data/backups
-      - LOG_DIR=/app/data/logs
-      - JWT_SECRET_KEY=please-change-me
-      - BOOTSTRAP_ADMIN_USERNAME=admin
-      - BOOTSTRAP_ADMIN_PASSWORD=please-change-me
-    volumes:
-      - dc-network-planner-data:/app/data    # 数据库、系统日志和本地备份持久化
-    healthcheck:
-      test: curl http://localhost:8000/api/health
-
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        - VITE_API_BASE_URL=/api  # 构建时 API 路径
-    ports: ["80:80"]
-    environment:
-      - BACKEND_URL=http://backend:8000  # 运行时后端地址
-    depends_on:
-      backend:
-        condition: service_healthy
-```
-
-#### 方式二：分别构建部署
-
-```bash
-# 后端
-docker build -t dc-network-planner-backend -f backend/Dockerfile backend/
-docker run -d --name dc-network-planner-backend -p 8000:8000 \
-  -e JWT_SECRET_KEY=please-change-me \
-  -e BOOTSTRAP_ADMIN_PASSWORD=please-change-me \
-  -v dc-network-planner-data:/app/data dc-network-planner-backend
-
-# 前端
-docker build -t dc-network-planner-frontend \
-  --build-arg VITE_API_BASE_URL=/api \
-  -f frontend/Dockerfile frontend/
-docker run -d --name dc-network-planner-frontend -p 80:80 \
-  -e BACKEND_URL=http://你的后端IP:8000 dc-network-planner-frontend
-```
+后端和前端镜像的实际构建步骤分别以 [`backend/Dockerfile`](backend/Dockerfile)、[`frontend/Dockerfile`](frontend/Dockerfile) 为准。若不使用 Compose，部署方仍需保持本节架构图中的反向代理、持久化目录和单后端实例边界。
 
 ### Docker 设计要点
 
 1. **多阶段构建**：builder 阶段安装依赖和编译，runtime 阶段仅包含运行所需，减小镜像体积
-2. **数据持久化**：后端将 SQLite 主库、系统日志和本地备份分别写入 `/app/data/dc_network_planner.db`、`/app/data/logs` 和 `/app/data/backups`，通过 Docker volume 或 bind mount 统一持久化；Alembic 启动时使用应用解析后的同一数据库 URL，`alembic.ini` 不再维护独立地址，确保迁移和 FastAPI 访问同一个数据库文件；`docker compose down -v` 会删除命名卷及其中全部数据
+2. **数据持久化**：后端将 SQLite 主库、系统日志和本地备份统一写入 `/app/data` 下的持久化目录；Alembic 启动时使用应用解析后的同一数据库 URL，`alembic.ini` 不再维护独立地址，确保迁移和 FastAPI 访问同一个数据库文件
 3. **前端代理**：Nginx 在容器启动时通过 `BACKEND_URL` 环境变量（envsubst）配置后端代理地址，支持运行时配置无需重新构建
 4. **健康检查**：后端配置 `HEALTHCHECK` 确保服务可用后才接受流量
 5. **构建缓存与可重复安装**：`requirements.txt`、`package.json` 和 `package-lock.json` 在源码之前复制；前端镜像使用 `npm ci` 按锁定依赖安装
@@ -1060,62 +966,57 @@ docker run -d --name dc-network-planner-frontend -p 80:80 \
 ### 9.1 流水线架构
 
 ```mermaid
-graph TB
-    Push["代码推送（git push）"] --> GHA["GitHub Actions"]
-    GHA --> Lint["lint<br/>ruff 检查<br/>black --check<br/>mypy 检查"]
-    GHA --> Test["test-backend<br/>pytest 53 项<br/>SQLite 内存"]
-    GHA --> Build["build-frontend<br/>npm lint<br/>type-check<br/>build"]
-    Lint --> Publish["build-and-push<br/>Docker buildx<br/>ghcr.io 推送"]
-    Test --> Publish
-    Build --> Publish
+flowchart LR
+    Trigger["main push / v* tag / PR to main"] --> Backend["backend-check<br/>make check"]
+    Trigger --> Frontend["build-frontend<br/>lint · type-check · build"]
+    Backend --> Docker["docker-build<br/>backend / frontend matrix"]
+    Frontend --> Docker
+    Docker --> Verify["PR: 仅构建验证"]
+    Docker --> Publish["main / v* push: 发布到 GHCR"]
 ```
+
+工作流保持两个质量门禁并行、镜像构建后置：只有后端与前端门禁都通过，才进入 backend/frontend 镜像矩阵。精确 Job 定义和命令以 `.github/workflows/ci.yml` 为唯一事实来源。
 
 ### 9.2 触发规则
 
 | 事件 | 触发行为 |
 |---|---|
-| PR 提交/更新到 `main` | `lint` + `test-backend` + `build-frontend`（验证不推送） |
-| 推送 `main` 分支 | 全部测试 + Docker 构建并推送 latest + SHA 标签 |
-| 推送 `v*` 标签 | 全部测试 + Docker 构建并推送 version + latest + SHA 标签 |
+| PR 提交或更新到 `main` | 执行后端、前端门禁并构建两类镜像，不登录或推送 GHCR |
+| 推送 `main` 分支 | 执行全部门禁，构建并推送 `latest` 与 SHA 标签 |
+| 推送 `v*` 标签 | 执行全部门禁，构建并推送语义化版本与 SHA 标签，不更新 `latest` |
 
 ### 9.3 工作流定义
 
-四个 Job 按需串联：
+三个 Job 按依赖关系执行：
 
-1. **lint** — ruff 检查 + black --check + mypy 类型检查
-   - pip 缓存加速重复运行
-   - mypy 非阻断（允许类型问题但不阻断流程）
-
-2. **test-backend** — Python 3.12, 安装依赖后执行 `pytest tests/ -v`
-   - pip 缓存加速重复运行
-   - 每个测试用例独立内存 SQLite 数据库，互不干扰
-
-3. **build-frontend** — Node 20, `npm install && npm run lint && npm run type-check && npm run build`
-   - 验证 ESLint、TypeScript 类型检查和前端编译是否通过
-   - MVP 阶段前端逻辑简单，不编写单元测试
-
-4. **build-and-push** — 依赖 lint + test-backend + build-frontend 三个 Job 成功
-   - 使用 Docker Buildx 构建多平台兼容镜像
-   - 登录 ghcr.io（使用 GITHUB_TOKEN，无需额外 secrets）
-   - Matrix 策略并行构建 backend 和 frontend 镜像
-   - 镜像缓存（GitHub Actions Cache）加速重复构建
+1. **backend-check** — 使用 Python 3.12 创建虚拟环境并执行 `make check`。
+   - `make check` 串联 ruff、black、mypy 和 pytest；mypy 当前为非阻断检查。
+   - 使用 pip 缓存加速依赖安装。
+2. **build-frontend** — 使用 Node 20 和 `npm ci` 按 lockfile 安装依赖，依次执行 lint、TypeScript 类型检查和生产构建。
+   - 使用 npm 缓存加速依赖安装。
+3. **docker-build** — 依赖前两个 Job 成功，通过 matrix 分别构建 backend 和 frontend 镜像。
+   - PR 只验证镜像可构建。
+   - `main` 分支和 `v*` 标签 push 时使用 `GITHUB_TOKEN` 登录 GHCR 并推送镜像。
+   - 使用 GitHub Actions Cache 复用 Docker 构建层。
 
 ### 9.4 镜像标签策略
 
 | 标签 | 生成条件 | 示例 |
 |---|---|---|
 | `latest` | 推送 main 分支时 | `ghcr.io/owner/dc-network-planner-backend:latest` |
-| `sha-{short}` | 推送 main 分支时 | `ghcr.io/owner/dc-network-planner-backend:sha-a1b2c3d` |
+| `sha-{short}` | 推送 main 分支或 v* 标签时 | `ghcr.io/owner/dc-network-planner-backend:sha-a1b2c3d` |
 | `{version}` | 推送 v* 标签时 | `ghcr.io/owner/dc-network-planner-backend:1.0.0` |
 
 ### 9.5 测试策略
 
 - **数据库隔离**：每个测试用例使用独立的内存 SQLite（`sqlite://` + `StaticPool`），`Base.metadata.create_all()` 在每个 fixture 中独立建表，互不污染
 - **依赖注入覆盖**：通过 `app.dependency_overrides[get_db]` 将数据库会话替换为测试用内存数据库会话
-- **无 E2E 测试**：MVP 阶段只做后端 API 测试 + 前端 build 验证。E2E 测试维护成本高于当前收益
+- **前端验证边界**：当前执行 ESLint、TypeScript 类型检查和生产构建，没有单独的前端单元测试或 E2E 测试
 
 ### 9.6 关键决策
 
-1. **GITHUB_TOKEN 无需额外配置**：GitHub Actions 内置 token 自动有权限推送 ghcr.io 至当前仓库
-2. **Matrix 构建**：backend 和 frontend 使用同一 workflow 的 matrix 策略并行构建，减少 CI 总耗时
-3. **Docker 层缓存**：使用 `type=gha` 缓存模式，利用 GitHub Actions Cache 加速镜像构建
+1. **质量门禁前置**：Docker Job 依赖后端和前端门禁，避免发布未通过基础检查的镜像。
+2. **PR 不产生制品副作用**：Pull Request 只验证镜像构建，不登录或推送 GHCR。
+3. **Matrix 构建**：backend 和 frontend 共用同一 Job 定义并行构建，减少配置重复和总耗时。
+4. **发布权限集中**：只有 `docker-build` Job 声明 `packages: write`；登录和推送动作仍由 `main` 分支或 `v*` 标签条件控制。
+5. **Docker 层缓存**：使用 `type=gha` 缓存模式，加速重复构建。

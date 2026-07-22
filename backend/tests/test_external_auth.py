@@ -1,6 +1,7 @@
 import hashlib
 from datetime import timedelta
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models.change_log import ChangeLog
@@ -215,7 +216,14 @@ def test_external_api_rejects_disabled_token_owner(client, test_db, user_headers
     assert response.status_code == 401
 
 
-def test_external_api_rejects_token_without_required_scope(client, user_headers_factory, test_db):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/external/v1/lookup?q=10.0.0.5",
+        "/api/external/v1/network-plane-types",
+    ],
+)
+def test_external_api_rejects_token_without_required_scope(client, user_headers_factory, test_db, path):
     """缺少接口所需 scope 的外部 API 访问令牌应返回 403。"""
     user_headers_factory([], username="external-no-read-scope")
     raw_token = "dcnp_ext_no_read_scope_token"
@@ -234,7 +242,7 @@ def test_external_api_rejects_token_without_required_scope(client, user_headers_
     finally:
         session.close()
 
-    response = client.get("/api/external/v1/lookup?q=10.0.0.5", headers=_external_headers(raw_token))
+    response = client.get(path, headers=_external_headers(raw_token))
 
     assert response.status_code == 403
 

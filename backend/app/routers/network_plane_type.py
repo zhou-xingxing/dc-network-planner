@@ -86,6 +86,7 @@ def update_plane_type_endpoint(
 
 
 def _plane_type_response(pt: "NetworkPlaneType", parent_names: Mapping[str, str | None]) -> PlaneTypeResponse:
+    """将网络平面类型模型组装为 API 响应。"""
     return PlaneTypeResponse(
         id=pt.id,
         name=pt.name,

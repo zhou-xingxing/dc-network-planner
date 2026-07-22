@@ -81,6 +81,7 @@ def test_external_openapi_schema_only_contains_external_api(client: TestClient) 
     assert all(not path.startswith("/static/api-docs") for path in paths)
     assert "/api/external/v1/auth/token" in paths
     assert "/api/external/v1/lookup" in paths
+    assert "/api/external/v1/network-plane-types" in paths
     assert "/api/auth/login" not in paths
     assert "/api/regions" not in paths
     assert "/api/external-access-tokens" not in paths
@@ -88,8 +89,37 @@ def test_external_openapi_schema_only_contains_external_api(client: TestClient) 
 
     token_operation = paths["/api/external/v1/auth/token"]["post"]
     lookup_operation = paths["/api/external/v1/lookup"]["get"]
+    plane_types_operation = paths["/api/external/v1/network-plane-types"]["get"]
     assert token_operation["operationId"] == "issue_external_access_token"
     assert lookup_operation["operationId"] == "lookup_network_planes"
+    assert plane_types_operation["operationId"] == "list_network_plane_types"
+    assert plane_types_operation["security"] == [{"External API Bearer Token": []}]
+
+    parameters = {parameter["name"]: parameter for parameter in plane_types_operation["parameters"]}
+    assert set(parameters) == {"skip", "limit"}
+    assert parameters["skip"]["schema"]["default"] == 0
+    assert parameters["skip"]["schema"]["minimum"] == 0
+    assert parameters["limit"]["schema"]["default"] == 100
+    assert parameters["limit"]["schema"]["minimum"] == 1
+    assert parameters["limit"]["schema"]["maximum"] == 500
+
+    response_ref = plane_types_operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    response_schema = schema["components"]["schemas"][response_ref.rsplit("/", 1)[1]]
+    item_ref = response_schema["properties"]["items"]["items"]["$ref"]
+    item_schema = schema["components"]["schemas"][item_ref.rsplit("/", 1)[1]]
+    assert set(item_schema["properties"]) == {
+        "id",
+        "name",
+        "description",
+        "is_private",
+        "vrf",
+        "parent_id",
+        "parent_name",
+        "created_at",
+        "updated_at",
+    }
+    assert set(item_schema["required"]) == set(item_schema["properties"])
+    assert all(property_schema.get("description") for property_schema in item_schema["properties"].values())
 
     token_request = schema["components"]["schemas"]["ExternalTokenRequest"]
     assert token_request["properties"]["username"]["examples"] == ["api-user"]

@@ -101,6 +101,7 @@ backend/
 │   │   ├── auth.py                # Web 登录、当前用户和密码修改
 │   │   ├── external_auth.py       # 外部 OpenAPI 访问令牌签发
 │   │   ├── external_lookup.py     # 外部 OpenAPI IP/CIDR 查询
+│   │   ├── external_network_plane_type.py # 外部 OpenAPI 网络平面类型列表
 │   │   ├── external_access_token.py # 管理员 Web 端外部令牌列表和撤销
 │   │   ├── lookup.py              # Web 端 IP/CIDR 查询
 │   │   ├── region.py / region_plane.py / network_plane_type.py
@@ -113,7 +114,7 @@ backend/
 │   │   ├── excel.py / backup.py / backup_scheduler.py / restore_database.py
 │   │   ├── change_log.py / stats.py / user.py
 │   ├── schemas/                   # Pydantic 请求/响应模型
-│   │   ├── external.py            # 外部 API token 请求/响应和 scope 类型
+│   │   ├── external.py            # 外部 API token、网络平面类型响应和 scope 类型
 │   │   ├── lookup.py              # lookup 查询结果响应模型
 │   │   └── 其他业务 schema
 │   ├── models/                    # SQLAlchemy ORM 模型
@@ -123,6 +124,7 @@ backend/
     ├── test_auth.py               # Web 登录、JWT、角色和 Region 权限
     ├── test_external_auth.py      # 外部令牌签发、生命周期和通用 external API 鉴权
     ├── test_external_lookup.py    # 外部 lookup 入口参数契约
+    ├── test_external_network_plane_types.py # 外部网络平面类型响应契约
     ├── test_external_access_token_management.py # 管理员 Web 端外部令牌管理
     ├── test_lookup.py             # lookup 业务逻辑完整回归
     ├── test_openapi_docs.py       # 独立 External Schema、文档页面和本地静态资源
@@ -469,6 +471,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | 方法 | 路径 | 所需 scope | 说明 |
 |---|---|---|---|
 | GET | `/api/external/v1/lookup` | `network-plane:read` | IP/CIDR 查询；参数 `q` 必填，`cidr_match` 可选，取值为 `exact`（默认）或 `overlap` |
+| GET | `/api/external/v1/network-plane-types` | `network-plane:read` | 按名称升序分页列出全局网络平面类型；`skip` 默认 0，`limit` 默认 100、最大 500 |
 
 #### 管理员外部 API 访问令牌管理
 

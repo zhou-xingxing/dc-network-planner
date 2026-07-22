@@ -52,6 +52,29 @@ class ExternalTokenResponse(BaseModel):
     expires_at: str = Field(..., description="令牌过期时间，使用系统统一的日期时间字符串格式。")
 
 
+class ExternalNetworkPlaneTypeResponse(BaseModel):
+    """External API 返回的网络平面类型。"""
+
+    id: str = Field(..., description="网络平面类型的唯一 ID。")
+    name: str = Field(..., description="网络平面类型名称。")
+    description: str = Field(..., description="网络平面类型说明；未填写时为空字符串。")
+    is_private: bool = Field(..., description="是否为私网类型。")
+    vrf: str | None = Field(..., description="VRF 名称；未配置时为 null。")
+    parent_id: str | None = Field(..., description="父级网络平面类型 ID；根类型为 null。")
+    parent_name: str | None = Field(..., description="父级网络平面类型名称；根类型为 null。")
+    created_at: str = Field(..., description="创建时间，使用系统统一的日期时间字符串格式。")
+    updated_at: str = Field(..., description="最后更新时间，使用系统统一的日期时间字符串格式。")
+
+
+class ExternalNetworkPlaneTypeListResponse(BaseModel):
+    """External API 网络平面类型分页列表。"""
+
+    items: list[ExternalNetworkPlaneTypeResponse] = Field(..., description="当前分页中的网络平面类型。")
+    total: int = Field(..., description="网络平面类型总数，不受当前分页范围影响。")
+    skip: int = Field(..., description="当前分页跳过的记录数。")
+    limit: int = Field(..., description="当前分页请求的最大返回条数。")
+
+
 class ExternalAccessTokenListItem(BaseModel):
     """管理员页面展示的未撤销且未过期外部 API 访问令牌。"""
 

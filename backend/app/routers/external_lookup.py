@@ -18,6 +18,7 @@ router = APIRouter(
 
 @router.get(
     "",
+    operation_id="lookup_network_planes",
     response_model=LookupResponse,
     summary="查询 IP 或 CIDR 所属网络平面",
     description=(

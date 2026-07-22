@@ -407,7 +407,12 @@ pre-commit install
 
 ## API 文档
 
-启动后端后访问 http://localhost:8000/docs 即可查看交互式 API 文档（Swagger UI），支持在线测试所有 API。
+启动后端后可访问：
+
+- http://localhost:8000/docs：Swagger UI，支持在线调试。
+- http://localhost:8000/redoc：ReDoc，适合阅读和查阅接口定义。
+
+文档仅展示 External API，并支持无外网环境访问。OpenAPI Schema 地址为 http://localhost:8000/api/external/v1/openapi.json。
 
 ## Docker 部署
 
@@ -434,11 +439,11 @@ CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
 <!-- code-lines:start -->
 | 分类 | 文件数 | 代码行 |
 |---|---:|---:|
-| 后端代码 | 68 | 5,700 |
-| 后端测试 | 22 | 4,014 |
+| 后端代码 | 72 | 7,434 |
+| 后端测试 | 23 | 4,127 |
 | 前端代码 | 48 | 5,258 |
 | 前端测试 | 0 | 0 |
-| 合计 | 138 | 14,972 |
+| 合计 | 143 | 16,819 |
 <!-- code-lines:end -->
 
 ## 许可证与商业授权

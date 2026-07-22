@@ -78,10 +78,10 @@ graph TB
 
 前端采用 Vue 3 Composition API + TypeScript + Vue Router 组织页面：
 
-- **App.vue** - 根组件，仅包含 `<router-view />`
+- **App.vue** - 根组件，通过 `<router-view />` 渲染当前路由页面，并提供页面切换动画
 - **AppLayout.vue** - 布局组件，包含侧边栏导航 + 顶栏（面包屑 + 当前用户入口 + 退出登录）+ 内容区
 - **views/** - 页面组件，每个对应一个路由
-- **api/** - Axios 请求封装模块，按业务领域拆分；包含外部 API 访问令牌的管理员管理接口调用，请求参数和响应数据使用 TypeScript 类型约束
+- **api/** - Axios 请求封装模块，主要按业务领域拆分；`excel.ts` 当前同时承载 Excel、统计和变更日志接口，另包含外部 API 访问令牌的管理员管理接口调用，请求参数和响应数据使用 TypeScript 类型约束
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
 - **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、外部 API 访问令牌、备份、导入导出和统计响应
@@ -94,7 +94,9 @@ graph TB
 backend/
 ├── app/
 │   ├── main.py                    # FastAPI 应用创建、全局中间件、异常处理和 Router 注册
+│   ├── openapi_docs.py            # 生成独立 External Schema 及本地 Swagger UI、ReDoc 页面
 │   ├── dependencies.py            # Web JWT、外部 API Token、角色和 Region 权限依赖
+│   ├── static/api_docs/           # 固定版本的 OpenAPI 文档前端资源及第三方许可证
 │   ├── routers/                   # HTTP API 路由层
 │   │   ├── auth.py                # Web 登录、当前用户和密码修改
 │   │   ├── external_auth.py       # 外部 OpenAPI 访问令牌签发
@@ -109,6 +111,7 @@ backend/
 │   │   ├── lookup.py              # IP/CIDR 查询业务逻辑
 │   │   ├── region.py / region_plane.py / network_plane_type.py
 │   │   ├── excel.py / backup.py / backup_scheduler.py / restore_database.py
+│   │   ├── change_log.py / stats.py / user.py
 │   ├── schemas/                   # Pydantic 请求/响应模型
 │   │   ├── external.py            # 外部 API token 请求/响应和 scope 类型
 │   │   ├── lookup.py              # lookup 查询结果响应模型
@@ -122,6 +125,7 @@ backend/
     ├── test_external_lookup.py    # 外部 lookup 入口参数契约
     ├── test_external_access_token_management.py # 管理员 Web 端外部令牌管理
     ├── test_lookup.py             # lookup 业务逻辑完整回归
+    ├── test_openapi_docs.py       # 独立 External Schema、文档页面和本地静态资源
     └── 其他业务测试
 ```
 
@@ -133,9 +137,11 @@ frontend/src/
 │   ├── request.ts                 # Axios 实例、基础错误处理和 Authorization 注入
 │   ├── auth.ts / users.ts
 │   ├── regions.ts / networkPlaneTypes.ts / lookup.ts
-│   ├── excel.ts / backup.ts / externalAccessTokens.ts
+│   ├── excel.ts                   # Excel、统计和变更日志接口
+│   ├── backup.ts / externalAccessTokens.ts
 ├── views/                         # 路由页面组件
-│   ├── Lookup.vue / Regions.vue / RegionDetail.vue
+│   ├── Login.vue / Lookup.vue / Regions.vue / RegionDetail.vue
+│   ├── PlaneTypes.vue
 │   ├── ImportExport.vue / BackupConfig.vue / ChangeLogs.vue
 │   ├── ExternalAccessTokens.vue / Users.vue / Profile.vue / Dashboard.vue
 ├── types/                         # 跨层业务类型定义
@@ -442,6 +448,12 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | PUT/DELETE | `/api/users/{id}` | 更新/删除用户（administrator）；不允许删除当前登录用户 |
 | POST | `/api/users/{id}/reset-password` | 重置用户密码（administrator） |
 
+#### External OpenAPI 契约
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/external/v1/openapi.json` | 公开且版本化的 External OpenAPI Schema；该路径自身不进入 Schema |
+
 #### 外部 OpenAPI 认证
 
 | 方法 | 路径 | 说明 |
@@ -681,6 +693,12 @@ flowchart TD
 应用启动时执行 `ensure_bootstrap_admin()`：仅当 `users` 表为空时，才根据 `BOOTSTRAP_ADMIN_USERNAME` 和 `BOOTSTRAP_ADMIN_PASSWORD` 创建第一个 `administrator`。已有用户时不会重置或覆盖任何账户。
 
 上述配置的默认值、环境变量覆盖优先级和生产环境要求统一见[后端配置加载策略](#后端配置加载策略)。
+
+### 5.7 OpenAPI 文档页面
+
+后端关闭 FastAPI 默认的全量 `/openapi.json`，仅通过 `/api/external/v1/openapi.json` 公开版本化的 External OpenAPI Schema。Schema 只包含已注册且允许公开的 `/api/external/v1/` 接口，不包含内部 Web API、文档页面和静态资源。External API 显式声明稳定的 `operationId`，避免 Python 函数重命名意外破坏生成客户端；文档可见性不替代接口鉴权。
+
+`/docs` 和 `/redoc` 分别使用 Swagger UI 与 ReDoc 展示该 Schema。所需静态资源固定版本并随服务发布，不依赖外部 CDN；资源版本、来源、许可证和自动校验的 `SHA256SUMS` 记录在 `app/static/api_docs/`。资源通过 setuptools package data 进入 wheel，升级时需同步更新并验证离线可用性。
 
 ## 6. 关键技术决策
 

@@ -15,14 +15,14 @@ class ExternalTokenRequest(BaseModel):
         min_length=1,
         max_length=100,
         description="本地账号用户名。签发成功后，外部访问令牌会映射到该用户的权限边界。",
-        examples=["admin"],
+        examples=["api-user"],
     )
     password: str = Field(
         ...,
         min_length=1,
         max_length=128,
         description="本地账号密码。仅用于签发令牌，不会在响应或数据库中保存明文。",
-        examples=["admin"],
+        examples=["your-password"],
     )
     requested_scopes: list[ExternalTokenScope] = Field(
         ...,

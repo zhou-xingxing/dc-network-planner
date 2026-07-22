@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
@@ -16,6 +17,8 @@ from app.exception_handlers import (
 from app.exceptions import BusinessError, ResourceNotFoundError
 from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
+from app.openapi_docs import API_DOCS_STATIC_DIR, API_DOCS_STATIC_URL
+from app.openapi_docs import router as openapi_docs_router
 from app.routers import (
     auth,
     backup,
@@ -64,7 +67,16 @@ app = FastAPI(
     title="DC Network Planner",
     description="数据中心网络平面规划系统的后端 API 服务",
     version="0.1.0",
+    openapi_url=None,
+    docs_url=None,
+    redoc_url=None,
     lifespan=lifespan,
+)
+
+app.mount(
+    API_DOCS_STATIC_URL,
+    StaticFiles(directory=API_DOCS_STATIC_DIR),
+    name="api-docs",
 )
 
 app.add_middleware(
@@ -91,6 +103,7 @@ app.add_exception_handler(Exception, cast(Any, unexpected_error_handler))
 
 
 # Register routers
+app.include_router(openapi_docs_router)
 app.include_router(auth.router)
 app.include_router(region.router)
 app.include_router(region_plane.router)

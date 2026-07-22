@@ -17,6 +17,13 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+app = [
+    "static/api_docs/*",
+    "static/api_docs/redoc/*",
+    "static/api_docs/swagger-ui/*",
+]
+
 [tool.black]
 line-length = 120
 target-version = ["py312"]

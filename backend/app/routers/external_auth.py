@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/external/v1/auth", tags=["External API Authentic
 
 @router.post(
     "/token",
+    operation_id="issue_external_access_token",
     response_model=ExternalTokenResponse,
     summary="签发外部 API 访问令牌",
     description=(

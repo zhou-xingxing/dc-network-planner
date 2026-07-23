@@ -30,6 +30,11 @@ def test_alembic_upgrade_uses_application_database_url(tmp_path: Path) -> None:
         users_table = connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'"
         ).fetchone()
+        plane_columns = {
+            row[1]: row[2] for row in connection.execute("PRAGMA table_info(region_network_planes)").fetchall()
+        }
 
-    assert revision == ("ddd259908cce",)
+    assert revision == ("f4c91b2a7d6e",)
     assert users_table == ("users",)
+    assert plane_columns["cidr"] == "VARCHAR(49)"
+    assert plane_columns["gateway_ip"] == "VARCHAR(45)"

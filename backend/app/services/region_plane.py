@@ -41,6 +41,15 @@ class AssignmentValidationContext:
     parent_plane_id: str | None
 
 
+@dataclass(frozen=True)
+class ParentPlaneContext:
+    """写入网络平面前解析出的直接父平面上下文。"""
+
+    requested_scope: str
+    parent_type: NetworkPlaneType | None
+    parent_plane: RegionNetworkPlane | None
+
+
 def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     """获取 Region 下所有网络平面的树形结构。
 
@@ -112,6 +121,47 @@ def get_region_plane_tree_for_region(db: Session, region_id: str) -> list[dict[s
     if not region:
         return None
     return get_region_plane_tree(db, region_id)
+
+
+def get_parent_plane_context(
+    db: Session,
+    region_id: str,
+    plane_type_id: str,
+    scope: str | None = DEFAULT_PLANE_SCOPE,
+) -> ParentPlaneContext:
+    """解析创建或编辑网络平面时实际生效的直接父平面实例。
+
+    父实例与写入校验使用相同规则：优先匹配同作用域实例，未命中时
+    回退到 Global。根类型返回空父级上下文，子类型未找到实例时保留
+    父类型信息供前端展示。
+
+    Args:
+        db: 数据库会话。
+        region_id: Region ID。
+        plane_type_id: 待创建的网络平面类型 ID。
+        scope: 待创建实例的作用域。
+
+    Returns:
+        已归一化作用域、直接父类型和实际生效父实例组成的上下文。
+
+    Raises:
+        ResourceNotFoundError: Region、网络平面类型或其父类型不存在。
+    """
+    if not db.get(Region, region_id):
+        raise ResourceNotFoundError("Region 不存在")
+    plane_type = db.get(NetworkPlaneType, plane_type_id)
+    if not plane_type:
+        raise ResourceNotFoundError("网络平面类型不存在")
+
+    normalized_scope = normalize_plane_scope(scope)
+    if not plane_type.parent_id:
+        return ParentPlaneContext(normalized_scope, None, None)
+
+    parent_type = db.get(NetworkPlaneType, plane_type.parent_id)
+    if not parent_type:
+        raise ResourceNotFoundError("父级网络平面类型不存在")
+    parent_plane = _find_parent_plane(db, region_id, parent_type.id, normalized_scope)
+    return ParentPlaneContext(normalized_scope, parent_type, parent_plane)
 
 
 def create_plane_for_region(
@@ -349,6 +399,36 @@ def serialize_region_plane_result(result: RegionPlaneMutationResult) -> dict[str
         "created_at": format_datetime(plane.created_at),
         "updated_at": format_datetime(plane.updated_at),
         "children": [],
+    }
+
+
+def serialize_parent_plane_context(context: ParentPlaneContext) -> dict[str, Any]:
+    """序列化写入网络平面所需的父平面预检上下文。"""
+    parent_type = context.parent_type
+    parent_plane = context.parent_plane
+    if not parent_type:
+        status = "root"
+    elif parent_plane:
+        status = "found"
+    else:
+        status = "missing"
+    return {
+        "status": status,
+        "requested_scope": context.requested_scope,
+        "parent_type_id": parent_type.id if parent_type else None,
+        "parent_type_name": parent_type.name if parent_type else None,
+        "parent_plane": (
+            {
+                "id": parent_plane.id,
+                "scope": parent_plane.scope,
+                "cidr": parent_plane.cidr,
+                "vlan_id": parent_plane.vlan_id,
+                "gateway_position": parent_plane.gateway_position,
+                "gateway_ip": parent_plane.gateway_ip,
+            }
+            if parent_plane
+            else None
+        ),
     }
 
 
@@ -777,28 +857,31 @@ def _validate_gateway_ip_policy(
 
     expected = _expected_gateway_ip(net, is_private=is_private)
     if ip != expected:
-        position = "第一个可用 IP" if is_private else "最后一个可用 IP"
-        plane_scope = "私网" if is_private else "非私网"
-        return f"当前网关 IP 不符合推荐规则：{plane_scope}平面建议使用 CIDR 内{position} {expected}"
+        if isinstance(net, ipaddress.IPv6Network):
+            plane_description = "IPv6 平面"
+            position = "第一个可用 IP"
+        else:
+            plane_description = "私网平面" if is_private else "非私网平面"
+            position = "第一个可用 IP" if is_private else "最后一个可用 IP"
+        return f"当前网关 IP 不符合推荐规则：{plane_description}建议使用 CIDR 内{position} {expected}"
     return None
 
 
 def _expected_gateway_ip(net: IPNetwork, *, is_private: bool) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     """计算给定 CIDR 的推荐网关 IP 位置。
 
-    私网平面：网络地址 + 1（/31、/32、/127、/128 等特殊前缀回退到网络地址）。
-    非私网平面：广播地址 - 1（IPv4 /31、/32 回退到广播地址；IPv6 回退到最后一个地址）。
+    IPv6 平面：网络地址 + 1（/127、/128 回退到网络地址）。
+    IPv4 私网平面：网络地址 + 1（/31、/32 回退到网络地址）。
+    IPv4 非私网平面：广播地址 - 1（/31、/32 回退到广播地址）。
     """
     if net.num_addresses == 1:
         return net.network_address
+    if isinstance(net, ipaddress.IPv6Network):
+        return net.network_address + 1 if net.prefixlen < 127 else net.network_address
     if is_private:
-        if isinstance(net, ipaddress.IPv4Network) and net.prefixlen < 31:
-            return net.network_address + 1
-        if isinstance(net, ipaddress.IPv6Network) and net.prefixlen < 127:
+        if net.prefixlen < 31:
             return net.network_address + 1
         return net.network_address
-    if isinstance(net, ipaddress.IPv4Network):
-        if net.prefixlen < 31:
-            return net.broadcast_address - 1
-        return net.broadcast_address
-    return net.network_address + net.num_addresses - 1
+    if net.prefixlen < 31:
+        return net.broadcast_address - 1
+    return net.broadcast_address

@@ -27,11 +27,11 @@ class RegionNetworkPlane(Base):
     region_id: Mapped[str] = mapped_column(String(36), ForeignKey("regions.id", ondelete="CASCADE"))
     plane_type_id: Mapped[str] = mapped_column(String(36), ForeignKey("network_plane_types.id", ondelete="RESTRICT"))
     scope: Mapped[str] = mapped_column(String(100), nullable=False, default="Global")
-    # CIDR 网络地址段，如 "10.0.0.0/22"
-    cidr: Mapped[str] = mapped_column(String(43), nullable=False)
+    # IPv4/IPv6 CIDR 网络地址段，如 "10.0.0.0/22" 或 "2001:db8::/64"
+    cidr: Mapped[str] = mapped_column(String(49), nullable=False)
     vlan_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     gateway_position: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    gateway_ip: Mapped[str | None] = mapped_column(String(39), nullable=True)
+    gateway_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db, onupdate=utcnow_db)
 

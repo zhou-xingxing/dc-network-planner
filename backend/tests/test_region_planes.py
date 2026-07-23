@@ -365,6 +365,51 @@ def test_create_public_plane_warns_when_gateway_ip_is_not_last_usable(client, ad
     assert "最后一个可用 IP 10.0.0.254" in resp.json()["gateway_ip_warning"]
 
 
+@pytest.mark.parametrize("is_private", [False, True])
+def test_create_ipv6_plane_gateway_warning_ignores_private_flag(
+    client, admin_headers, user_headers_factory, is_private
+):
+    """IPv6 网关推荐和提示文案不区分私网属性。"""
+    region = client.post("/api/regions", json={"name": "TestRegion"}, headers=admin_headers).json()
+    pt = _create_plane_type(client, admin_headers, "IPv6 平面", is_private=is_private).json()
+    user_headers = user_headers_factory([region["id"]])
+
+    resp = _create_region_plane(
+        client,
+        region["id"],
+        pt["id"],
+        "2001:db8::/64",
+        user_headers,
+        gateway_ip="2001:db8::ffff",
+    )
+
+    assert resp.status_code == 201
+    assert (
+        resp.json()["gateway_ip_warning"]
+        == "当前网关 IP 不符合推荐规则：IPv6 平面建议使用 CIDR 内第一个可用 IP 2001:db8::1"
+    )
+
+
+def test_create_plane_accepts_longest_ipv6_text(client, admin_headers, user_headers_factory):
+    """API 字段长度应覆盖最长的合法 IPv6 地址及其 CIDR。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    gateway_ip = "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"
+    cidr = f"{gateway_ip}/128"
+
+    resp = _create_region_plane(
+        client,
+        region["id"],
+        pt["id"],
+        cidr,
+        user_headers,
+        gateway_ip=gateway_ip,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["cidr"] == cidr
+    assert resp.json()["gateway_ip"] == gateway_ip
+
+
 def test_update_root_plane_fields_but_not_plane_type(client, admin_headers, user_headers_factory):
     """编辑 Region 网络平面时可更新业务字段，但不能修改网络平面类型。"""
     region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
@@ -570,6 +615,125 @@ def test_create_child_requires_parent_created(client, admin_headers, user_header
 
     assert resp.status_code == 409
     assert "父级网络平面尚未" in resp.json()["detail"]
+
+
+def test_get_parent_context_for_root_type(client, admin_headers, user_headers_factory):
+    """根类型不需要父平面实例，空作用域归一化为 Global。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+
+    resp = client.get(
+        f"/api/regions/{region['id']}/planes/parent-context",
+        params={"plane_type_id": root_pt["id"], "scope": "  "},
+        headers=user_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "status": "root",
+        "requested_scope": "Global",
+        "parent_type_id": None,
+        "parent_type_name": None,
+        "parent_plane": None,
+    }
+
+
+def test_get_parent_context_prefers_same_scope_parent(client, admin_headers, user_headers_factory):
+    """父平面预检优先返回同作用域实例。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    _create_region_plane(client, region["id"], root_pt["id"], "10.0.0.0/16", user_headers)
+    scoped_parent = _create_region_plane(
+        client,
+        region["id"],
+        root_pt["id"],
+        "10.1.0.0/16",
+        user_headers,
+        scope="业务AZ1",
+        vlan_id=100,
+        gateway_position="Core-A",
+        gateway_ip="10.1.0.254",
+    ).json()
+
+    resp = client.get(
+        f"/api/regions/{region['id']}/planes/parent-context",
+        params={"plane_type_id": child_pt["id"], "scope": "业务AZ1"},
+        headers=user_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "found"
+    assert data["requested_scope"] == "业务AZ1"
+    assert data["parent_type_id"] == root_pt["id"]
+    assert data["parent_type_name"] == "管理平面"
+    assert data["parent_plane"] == {
+        "id": scoped_parent["id"],
+        "scope": "业务AZ1",
+        "cidr": "10.1.0.0/16",
+        "vlan_id": 100,
+        "gateway_position": "Core-A",
+        "gateway_ip": "10.1.0.254",
+    }
+
+
+def test_get_parent_context_falls_back_to_global_parent(client, admin_headers, user_headers_factory):
+    """同作用域父实例不存在时，父平面预检返回 Global 实例。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    global_parent = _create_region_plane(
+        client,
+        region["id"],
+        root_pt["id"],
+        "10.0.0.0/16",
+        user_headers,
+    ).json()
+
+    resp = client.get(
+        f"/api/regions/{region['id']}/planes/parent-context",
+        params={"plane_type_id": child_pt["id"], "scope": "业务AZ1"},
+        headers=user_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "found"
+    assert data["requested_scope"] == "业务AZ1"
+    assert data["parent_plane"]["id"] == global_parent["id"]
+    assert data["parent_plane"]["scope"] == "Global"
+
+
+def test_get_parent_context_reports_missing_parent_instance(client, admin_headers, user_headers_factory):
+    """父类型存在但没有有效实例时返回可展示的 missing 状态。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+
+    resp = client.get(
+        f"/api/regions/{region['id']}/planes/parent-context",
+        params={"plane_type_id": child_pt["id"], "scope": "业务AZ1"},
+        headers=user_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "missing"
+    assert data["parent_type_id"] == root_pt["id"]
+    assert data["parent_type_name"] == "管理平面"
+    assert data["parent_plane"] is None
+
+
+def test_get_parent_context_allows_read_without_region_write_permission(client, admin_headers, user_headers_factory):
+    """父平面预检是只读接口，不要求目标 Region 的业务写权限。"""
+    _, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    unauthorized_region = client.post("/api/regions", json={"name": "NoPermissionRegion"}, headers=admin_headers).json()
+
+    resp = client.get(
+        f"/api/regions/{unauthorized_region['id']}/planes/parent-context",
+        params={"plane_type_id": root_pt["id"], "scope": "Global"},
+        headers=user_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "root"
 
 
 def test_create_child_outside_parent(client, admin_headers, user_headers_factory):

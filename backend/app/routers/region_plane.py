@@ -1,17 +1,19 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, operator_name, require_region_business_write
 from app.exceptions import BusinessError, ResourceNotFoundError
 from app.models.user import User
-from app.schemas.region_plane import RegionPlaneCreate, RegionPlaneUpdate
+from app.schemas.region_plane import ParentPlaneContextResponse, RegionPlaneCreate, RegionPlaneUpdate
 from app.services.region_plane import (
     create_plane_for_region,
     delete_plane_for_region,
+    get_parent_plane_context,
     get_region_plane_tree_for_region,
+    serialize_parent_plane_context,
     serialize_region_plane_result,
     update_plane_for_region,
 )
@@ -30,6 +32,21 @@ def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)) -
     if tree is None:
         raise HTTPException(status_code=404, detail="Region 不存在")
     return tree
+
+
+@router.get("/parent-context", response_model=ParentPlaneContextResponse)
+def get_parent_plane_context_endpoint(
+    region_id: str,
+    plane_type_id: str = Query(..., min_length=1),
+    scope: str = Query("Global", max_length=100),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """查询指定 Region 中网络平面类型和 scope 对应的父平面实例。"""
+    try:
+        context = get_parent_plane_context(db, region_id, plane_type_id, scope)
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return serialize_parent_plane_context(context)
 
 
 @router.post("", status_code=201)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from app.utils.ip_utils import parse_ip
@@ -25,13 +27,34 @@ class RegionPlaneResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ParentPlaneInstanceResponse(BaseModel):
+    """创建或编辑网络平面时展示的有效父平面实例。"""
+
+    id: str
+    scope: str
+    cidr: str
+    vlan_id: int | None = None
+    gateway_position: str | None = None
+    gateway_ip: str | None = None
+
+
+class ParentPlaneContextResponse(BaseModel):
+    """网络平面类型和作用域对应的父平面预检结果。"""
+
+    status: Literal["root", "found", "missing"]
+    requested_scope: str
+    parent_type_id: str | None = None
+    parent_type_name: str | None = None
+    parent_plane: ParentPlaneInstanceResponse | None = None
+
+
 class RegionPlaneCreate(BaseModel):
     plane_type_id: str
     scope: str | None = Field("Global", max_length=100, description="作用域，空值会归一化为 Global")
-    cidr: str = Field(..., max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
+    cidr: str = Field(..., max_length=49, description="CIDR 地址段，如 10.0.0.0/22 或 2001:db8::/64")
     vlan_id: int | None = Field(None, ge=1, le=4094)
     gateway_position: str | None = Field(None, max_length=255)
-    gateway_ip: str | None = Field(None, max_length=39)
+    gateway_ip: str | None = Field(None, max_length=45)
 
     @field_validator("scope")
     @classmethod
@@ -58,10 +81,10 @@ class RegionPlaneCreate(BaseModel):
 
 class RegionPlaneUpdate(BaseModel):
     scope: str | None = Field(None, max_length=100, description="作用域，空值会归一化为 Global")
-    cidr: str | None = Field(None, max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
+    cidr: str | None = Field(None, max_length=49, description="CIDR 地址段，如 10.0.0.0/22 或 2001:db8::/64")
     vlan_id: int | None = Field(None, ge=1, le=4094)
     gateway_position: str | None = Field(None, max_length=255)
-    gateway_ip: str | None = Field(None, max_length=39)
+    gateway_ip: str | None = Field(None, max_length=45)
 
     @field_validator("scope")
     @classmethod

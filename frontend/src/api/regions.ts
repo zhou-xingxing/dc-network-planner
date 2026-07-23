@@ -4,6 +4,7 @@ import type {
   ListQueryParams,
   MessageResponse,
   PaginatedResponse,
+  ParentPlaneContext,
   Region,
   RegionCreatePayload,
   RegionDetail,
@@ -35,6 +36,16 @@ export function deleteRegion(id: EntityId): Promise<MessageResponse> {
 
 export function fetchRegionPlanes(regionId: EntityId): Promise<RegionPlane[]> {
   return request.get<RegionPlane[], RegionPlane[]>(`/regions/${regionId}/planes`)
+}
+
+export function fetchParentPlaneContext(
+  regionId: EntityId,
+  planeTypeId: EntityId,
+  scope: string
+): Promise<ParentPlaneContext> {
+  return request.get<ParentPlaneContext, ParentPlaneContext>(`/regions/${regionId}/planes/parent-context`, {
+    params: { plane_type_id: planeTypeId, scope },
+  })
 }
 
 export function createRegionPlane(regionId: EntityId, data: RegionPlaneCreatePayload): Promise<RegionPlane> {

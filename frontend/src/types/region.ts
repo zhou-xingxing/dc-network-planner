@@ -57,3 +57,20 @@ export interface RegionPlaneUpdatePayload {
   gateway_position?: string | null
   gateway_ip?: string | null
 }
+
+export interface ParentPlaneInstance {
+  id: EntityId
+  scope: string
+  cidr: string
+  vlan_id?: number | null
+  gateway_position?: string | null
+  gateway_ip?: string | null
+}
+
+export interface ParentPlaneContext {
+  status: 'root' | 'found' | 'missing'
+  requested_scope: string
+  parent_type_id?: EntityId | null
+  parent_type_name?: string | null
+  parent_plane?: ParentPlaneInstance | null
+}

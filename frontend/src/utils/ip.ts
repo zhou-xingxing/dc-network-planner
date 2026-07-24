@@ -1,7 +1,42 @@
+export interface CidrAnalysis {
+  networkCidr: string
+  usesHostAddress: boolean
+}
+
 export function getIpVersion(ip: string): 4 | 6 | null {
   if (isValidIpv4(ip)) return 4
   if (expandIpv6(ip)) return 6
   return null
+}
+
+export function analyzeCidr(cidr: string): CidrAnalysis | null {
+  const parts = cidr.trim().split('/')
+  if (parts.length !== 2) return null
+  const [ip, prefixText] = parts
+  if (!/^\d+$/.test(prefixText)) return null
+  const prefix = Number(prefixText)
+  const ipVersion = getIpVersion(ip)
+  const maxPrefix = ipVersion === 4 ? 32 : 128
+  if (!ipVersion || prefix < 0 || prefix > maxPrefix) return null
+
+  if (ipVersion === 4) {
+    const address = ipv4ToNumber(ip)
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0
+    const network = (address & mask) >>> 0
+    return {
+      networkCidr: `${numberToIpv4(network)}/${prefix}`,
+      usesHostAddress: address !== network,
+    }
+  }
+
+  const segments = expandIpv6(ip)
+  if (!segments) return null
+  const address = ipv6SegmentsToBigInt(segments)
+  const network = getIpv6NetworkAddress(address, prefix)
+  return {
+    networkCidr: `${bigIntToIpv6(network)}/${prefix}`,
+    usesHostAddress: address !== network,
+  }
 }
 
 export function recommendedGatewayIp(cidr: string, isPrivate: boolean): string {
@@ -67,11 +102,19 @@ function parseIpv6Section(section: string): number[] | null {
 function recommendedIpv6GatewayIp(ip: string, prefix: number): string {
   const segments = expandIpv6(ip)
   if (!segments) return ''
-  const address = segments.reduce((value, segment) => (value << 16n) | BigInt(segment), 0n)
-  const hostBits = 128 - prefix
-  const network = hostBits === 128 ? 0n : (address >> BigInt(hostBits)) << BigInt(hostBits)
+  const address = ipv6SegmentsToBigInt(segments)
+  const network = getIpv6NetworkAddress(address, prefix)
   const gateway = prefix < 127 ? network + 1n : network
   return bigIntToIpv6(gateway)
+}
+
+function ipv6SegmentsToBigInt(segments: number[]): bigint {
+  return segments.reduce((value, segment) => (value << 16n) | BigInt(segment), 0n)
+}
+
+function getIpv6NetworkAddress(address: bigint, prefix: number): bigint {
+  const shift = 128 - prefix
+  return shift === 128 ? 0n : (address >> BigInt(shift)) << BigInt(shift)
 }
 
 function bigIntToIpv6(value: bigint): string {

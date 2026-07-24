@@ -204,6 +204,34 @@ def test_preview_import_rejects_gateway_ip_outside_cidr(client, admin_headers, u
     assert "网关 IP 10.10.1.1 必须在平面 CIDR 10.10.0.0/24 范围内" in data["error_rows"][0]["errors"]
 
 
+def test_preview_import_rejects_cidr_using_host_address(client, admin_headers, user_headers_factory):
+    """CIDR 使用网段内的主机地址时，Excel 预览应提示使用网络地址。"""
+    _, _, user_headers = _setup_import_target(client, admin_headers, user_headers_factory)
+    file_bytes = _workbook_bytes(
+        IMPORT_TEMPLATE_HEADERS,
+        [["导入区域", "导入平面", "Global", "10.10.0.1/24", 100, "CE01", ""]],
+    )
+
+    response = client.post(
+        "/api/excel/import/preview",
+        files={
+            "file": (
+                "import.xlsx",
+                file_bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["valid_rows"] == 0
+    assert data["error_rows"][0]["errors"] == [
+        "CIDR 必须使用网段的网络地址，当前输入 10.10.0.1/24，建议使用 10.10.0.0/24"
+    ]
+
+
 def test_preview_import_rows_only_include_valid_rows(client, admin_headers, user_headers_factory):
     """预览响应 rows 只返回确认导入会使用的有效行。"""
     _, _, user_headers = _setup_import_target(client, admin_headers, user_headers_factory)

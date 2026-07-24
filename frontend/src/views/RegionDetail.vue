@@ -220,7 +220,7 @@
             </template>
           </div>
         </el-form-item>
-        <el-form-item label="CIDR" prop="network_address">
+        <el-form-item label="CIDR" prop="network_address" class="cidr-form-item">
           <div class="cidr-input-group">
             <el-input
               v-model="planeForm.network_address"
@@ -234,7 +234,7 @@
             <el-input
               v-model="planeForm.prefix_length"
               class="cidr-prefix-input"
-              placeholder="22"
+              placeholder="例如：24"
               maxlength="3"
               clearable
               inputmode="numeric"
@@ -299,7 +299,7 @@ import {
   Plus,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { getIpVersion, recommendedGatewayIp } from '@/utils/ip'
+import { analyzeCidr, getIpVersion, recommendedGatewayIp } from '@/utils/ip'
 import { formatDateTime } from '@/utils/time'
 import { buildPlaneTypeTree } from '@/utils/tree'
 import type {
@@ -490,6 +490,13 @@ function validateCidrInput(_rule: unknown, _value: string, callback: (error?: Er
   const maxPrefix = ipVersion === 4 ? 32 : 128
   if (prefix < 0 || prefix > maxPrefix) {
     callback(new Error(`${ipVersion === 4 ? 'IPv4' : 'IPv6'} 子网掩码位数范围为 0-${maxPrefix}`))
+    return
+  }
+  const analysis = analyzeCidr(`${address}/${prefix}`)
+  if (analysis?.usesHostAddress) {
+    callback(
+      new Error(`CIDR 必须使用网段的网络地址，当前输入 ${address}/${prefix}，建议使用 ${analysis.networkCidr}`)
+    )
     return
   }
   callback()
@@ -706,6 +713,13 @@ onBeforeUnmount(clearParentPlaneContextLookup)
   grid-template-columns: minmax(0, 1fr) 24px 92px;
   align-items: center;
   width: 100%;
+}
+:deep(.cidr-form-item .el-form-item__error) {
+  position: static;
+  width: 100%;
+  padding-top: 4px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .cidr-separator {
   color: var(--color-text-secondary);

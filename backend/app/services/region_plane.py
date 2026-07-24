@@ -14,6 +14,7 @@ from app.models.region_network_plane import RegionNetworkPlane
 from app.services.change_log import log_change
 from app.utils.ip_utils import (
     IPNetwork,
+    cidr_uses_host_address,
     ip_belongs_to_network,
     network_is_subnet_of,
     parse_cidr,
@@ -578,6 +579,8 @@ def _validate_network_format(
     net = parse_cidr(cidr)
     if not net:
         raise BusinessError(f"无效的 CIDR 格式: {cidr}")
+    if cidr_uses_host_address(cidr, net):
+        raise BusinessError(f"CIDR 必须使用网段的网络地址，当前输入 {cidr}，建议使用 {net.with_prefixlen}")
     ip = _validate_gateway_ip_format(net, gateway_ip)
     return net, ip
 

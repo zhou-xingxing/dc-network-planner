@@ -49,6 +49,36 @@ def parse_ip(ip_str: str) -> Optional[IPAddress]:
     return None
 
 
+def cidr_uses_host_address(cidr_str: str, net: IPNetwork | None = None) -> bool:
+    """判断 CIDR 地址部分是否使用了网段内的主机地址。
+
+    CIDR 地址部分应使用网段的网络地址，而不是网段内的主机地址。
+    例如，``10.0.0.1/24`` 使用了 ``10.0.0.0/24`` 网段内的主机地址，
+    应改为 ``10.0.0.0/24``；``2001:db8::1/64`` 同理，应改为
+    ``2001:db8::/64``。
+
+    Args:
+        cidr_str: CIDR 字符串，如 ``10.0.0.1/30``。
+        net: 从同一 CIDR 解析出的网络对象；传入时复用，避免重复解析。
+
+    Returns:
+        True 表示 CIDR 地址部分使用了网段内的主机地址。
+
+        False 有两种含义：斜杠前的地址就是网络地址，例如
+        ``10.0.0.0/24``；或者输入无法完成判断，例如 CIDR 格式无效、
+        缺少斜杠、地址与 ``net`` 的 IP 版本不一致。因此，返回 False
+        不代表 CIDR 格式有效，调用方仍需单独完成格式校验。
+    """
+    parsed_net = net or parse_cidr(cidr_str)
+    if not parsed_net:
+        return False
+    address_text, separator, _ = cidr_str.partition("/")
+    if not separator:
+        return False
+    address = parse_ip(address_text)
+    return address is not None and address.version == parsed_net.version and address != parsed_net.network_address
+
+
 def check_overlap(net1: IPNetwork, net2: IPNetwork) -> bool:
     """Check if two CIDR networks overlap.
 

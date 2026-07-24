@@ -346,8 +346,6 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 
 Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 创建多个实例，空作用域在接口层归一化为 `Global`。Region 内 CIDR 不允许与非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。CIDR 是否允许跨 Region 重叠由启动期静态配置 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 
-前端 IPv4 校验与后端标准库 `ipaddress` 保持一致，十进制分段不接受前导零。CIDR 格式和网关 IP 归属等不依赖数据库的输入错误，应在查询网络平面类型、Region 平面实例等数据库数据前拦截。
-
 #### change_logs
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -704,14 +702,15 @@ flowchart TD
 3. 子类型平面的 CIDR 必须落在实际挂载父平面的 CIDR 范围内。
 4. Region 内 CIDR 不允许与非有效父子/祖先关系的网络平面重叠；有效父子/祖先关系允许 CIDR 包含关系，但子平面必须落在父平面范围内。CIDR 是否允许跨 Region 重叠由 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 5. 更新父平面 CIDR 时，已有子孙平面必须仍然落在新的父平面 CIDR 范围内。
-6. 网关 IP 必须位于当前平面 CIDR 范围内；IPv6 平面统一推荐第一个可用 IP，提示文案不区分私网属性；IPv4 私网平面推荐第一个可用 IP，IPv4 非私网平面推荐最后一个可用 IP，不符合推荐值只返回提示。
-7. VLAN ID 在同一 Region 内不能重复，是否允许跨 Region 重复由 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空表示不配置 VLAN，且不参与重复性检查。
-8. 删除某个 Region 下的平面时，只允许删除没有子平面的叶子节点；如果该平面下仍有实际挂载的子平面，则拒绝删除并提示用户先删除子平面。回退挂载到 `Global` 父平面的子平面也视为该 `Global` 实例的实际子平面，会阻止删除该父平面。
-9. 删除 Region 允许整体废弃该 Region，并通过 ORM 级联删除其下所有网络平面实例、清理用户 Region 授权；删除前会统计受影响的网络平面实例数和用户授权数并写入 Region 删除审计日志。前端在 Region 下存在网络平面实例时要求输入 Region 名称二次确认。
-10. 删除网络平面类型时，只允许删除未被 Region 使用且没有子类型的叶子类型；数据库外键也使用 `RESTRICT` 拒绝直接删除仍有子类型或 Region 平面实例引用的类型。
-11. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
-12. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
-13. `network_plane_types.is_private` 按类型树继承：子类型属性值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
+6. Region 网络平面 CIDR 必须使用网段的网络地址；如果地址部分使用了网段内的主机地址，后端拒绝写入并提示应使用的网络地址。IPv4 `/32` 和 IPv6 `/128` 允许使用地址本身。
+7. 网关 IP 必须位于当前平面 CIDR 范围内；IPv6 平面统一推荐第一个可用 IP，提示文案不区分私网属性；IPv4 私网平面推荐第一个可用 IP，IPv4 非私网平面推荐最后一个可用 IP，不符合推荐值只返回提示。
+8. VLAN ID 在同一 Region 内不能重复，是否允许跨 Region 重复由 `ALLOW_VLAN_OVERLAP_ACROSS_REGIONS` 控制；为空表示不配置 VLAN，且不参与重复性检查。
+9. 删除某个 Region 下的平面时，只允许删除没有子平面的叶子节点；如果该平面下仍有实际挂载的子平面，则拒绝删除并提示用户先删除子平面。回退挂载到 `Global` 父平面的子平面也视为该 `Global` 实例的实际子平面，会阻止删除该父平面。
+10. 删除 Region 允许整体废弃该 Region，并通过 ORM 级联删除其下所有网络平面实例、清理用户 Region 授权；删除前会统计受影响的网络平面实例数和用户授权数并写入 Region 删除审计日志。前端在 Region 下存在网络平面实例时要求输入 Region 名称二次确认。
+11. 删除网络平面类型时，只允许删除未被 Region 使用且没有子类型的叶子类型；数据库外键也使用 `RESTRICT` 拒绝直接删除仍有子类型或 Region 平面实例引用的类型。
+12. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复创建同一个网络平面类型的实例。
+13. `region_network_planes.vlan_id` 建立单列索引，用于写入时快速定位同 VLAN 记录。
+14. `network_plane_types.is_private` 按类型树继承：子类型属性值必须与父类型一致，否则后端拒绝请求；根类型变更私网/公网属性时会同步整棵后代子树。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；选择父级后，私网/公网属性自动继承父级并禁止单独编辑。Region 详情页创建或编辑网络平面时，在用户选择网络平面类型、打开编辑弹窗或修改作用域后调用父平面预检接口：根类型明确提示无需父实例；子类型展示同作用域优先、`Global` 兜底后实际生效的父实例及其 CIDR、VLAN、网关信息；若父类型存在但没有有效实例，页面禁用提交并提示先创建父实例。该预检只改善提交前反馈，不作为并发写入保证；最终创建或更新仍由 后端Service 基于最新数据库状态执行父实例存在性和 CIDR 归属强校验。
 

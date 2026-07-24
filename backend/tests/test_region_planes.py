@@ -248,6 +248,38 @@ def test_create_root_plane_invalid_cidr_is_rejected_before_database_query():
         )
 
 
+@pytest.mark.parametrize(
+    ("cidr", "expected_cidr"),
+    [
+        ("10.0.0.1/30", "10.0.0.0/30"),
+        ("2001:db8::1234/64", "2001:db8::/64"),
+    ],
+)
+def test_create_plane_rejects_cidr_using_host_address_before_database_query(cidr, expected_cidr):
+    """CIDR 使用网段内的主机地址时，应在访问数据库前提示使用网络地址。"""
+    with pytest.raises(region_plane_service.BusinessError) as exc_info:
+        region_plane_service.create_plane_for_region(
+            cast(Session, _NoQueryDB()),
+            "region-id",
+            "plane-type-id",
+            cidr,
+            "tester",
+        )
+
+    assert str(exc_info.value) == f"CIDR 必须使用网段的网络地址，当前输入 {cidr}，建议使用 {expected_cidr}"
+
+
+@pytest.mark.parametrize("cidr", ["10.0.0.0/30", "10.0.0.5/32", "2001:db8::1234/128"])
+def test_create_plane_allows_network_address_cidr(client, admin_headers, user_headers_factory, cidr):
+    """使用网络地址的 CIDR，包括合法的 /32 和 /128，应允许创建。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+
+    resp = _create_region_plane(client, region["id"], pt["id"], cidr, user_headers)
+
+    assert resp.status_code == 201
+    assert resp.json()["cidr"] == cidr
+
+
 def test_create_root_plane_gateway_ip_outside_cidr_is_rejected_before_database_query():
     """网关 IP 明显不在 CIDR 内时，不需要查询网络平面类型。"""
     with pytest.raises(region_plane_service.BusinessError):
@@ -544,6 +576,23 @@ def test_update_child_plane_rejects_cidr_outside_parent(client, admin_headers, u
 
     assert resp.status_code == 409
     assert "范围内" in resp.json()["detail"]
+
+
+def test_update_plane_rejects_cidr_using_host_address(client, admin_headers, user_headers_factory):
+    """编辑网络平面时，CIDR 地址部分同样不能使用网段内的主机地址。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    plane = _create_region_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers).json()
+
+    resp = _update_plane(
+        client,
+        region["id"],
+        plane["id"],
+        user_headers,
+        cidr="10.0.0.1/30",
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == ("CIDR 必须使用网段的网络地址，当前输入 10.0.0.1/30，建议使用 10.0.0.0/30")
 
 
 def test_update_plane_rejects_gateway_ip_outside_cidr(client, admin_headers, user_headers_factory):

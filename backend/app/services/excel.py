@@ -14,7 +14,7 @@ from app.models.user import User
 from app.services.region_plane import create_plane_for_region, normalize_plane_scope
 from app.services.user import get_user_permitted_region_ids
 from app.utils.excel_utils import IMPORT_MAX_ROWS, build_export, parse_excel
-from app.utils.ip_utils import ip_belongs_to_network, parse_cidr, parse_ip
+from app.utils.ip_utils import cidr_uses_host_address, ip_belongs_to_network, parse_cidr, parse_ip
 from app.utils.time_utils import format_datetime
 
 # 单实例进程级导入预览缓存；访问由锁保护，避免并发请求破坏 TTL/LRU 元数据。
@@ -133,6 +133,10 @@ def preview_import(file_bytes: bytes, db: Session, current_user: User) -> dict[s
             net = parse_cidr(row["ip_range"])
             if not net:
                 row_errors.append(f"无效CIDR: {row['ip_range']}")
+            elif cidr_uses_host_address(row["ip_range"], net):
+                row_errors.append(
+                    f"CIDR 必须使用网段的网络地址，当前输入 {row['ip_range']}，建议使用 {net.with_prefixlen}"
+                )
 
         if vlan_id_error:
             row_errors.append(f"无效 VLAN ID: {vlan_id_error}")

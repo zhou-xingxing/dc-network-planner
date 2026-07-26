@@ -221,7 +221,7 @@
           </div>
         </el-form-item>
         <el-form-item label="CIDR" prop="network_address" class="cidr-form-item">
-          <div class="cidr-input-group">
+          <div class="cidr-input-group" :class="{ 'has-recommendation-action': !isEditPlane }">
             <el-input
               v-model="planeForm.network_address"
               class="cidr-address-input"
@@ -241,6 +241,24 @@
               aria-label="子网掩码位数"
               @blur="validateCidrField"
             />
+            <el-tooltip
+              v-if="!isEditPlane"
+              :disabled="!cidrRecommendationDisabledReason"
+              :content="cidrRecommendationDisabledReason"
+              placement="top"
+            >
+              <span class="cidr-recommendation-action">
+                <el-button
+                  type="primary"
+                  plain
+                  :disabled="Boolean(cidrRecommendationDisabledReason)"
+                  :loading="cidrRecommendationLoading"
+                  @click="fillRecommendedCidr"
+                >
+                  自动分配
+                </el-button>
+              </span>
+            </el-tooltip>
           </div>
         </el-form-item>
         <el-form-item label="VLAN" prop="vlan_id">
@@ -280,6 +298,7 @@ import { useRouter } from 'vue-router'
 import {
   getRegion,
   fetchParentPlaneContext,
+  recommendRegionPlaneCidr,
   createRegionPlane,
   updateRegionPlane,
   deleteRegionPlane,
@@ -352,6 +371,8 @@ const editingPlaneId = ref<EntityId | ''>('')
 const parentPlaneContext = ref<ParentPlaneContext | null>(null)
 const parentPlaneContextLoading = ref(false)
 const parentPlaneContextError = ref('')
+const cidrRecommendationLoading = ref(false)
+let cidrRecommendationRequestId = 0
 let cancelActiveParentPlaneContextLookup: (() => void) | undefined
 
 // ---- 计算属性 ----
@@ -379,6 +400,34 @@ const parentPlaneLookupScopeText = computed(() => {
   const scope = parentPlaneContext.value?.requested_scope
   if (!scope) return ''
   return scope === 'Global' ? 'Global' : `${scope} 或 Global`
+})
+const cidrRecommendationDisabledReason = computed(() => {
+  if (!planeForm.value.plane_type_id) return '请先选择网络平面类型'
+  if (parentPlaneContextLoading.value) return '正在查询父平面实例'
+  if (parentPlaneContextError.value) return '父平面信息查询失败，请先重试'
+
+  const context = parentPlaneContext.value
+  if (!context) return '请先确认父平面实例'
+  if (context.status === 'root') return '根网络平面没有父平面，无法自动分配'
+  if (context.status === 'missing' || !context.parent_plane) return '请先创建有效的父平面实例'
+
+  const prefixText = planeForm.value.prefix_length.trim()
+  if (!prefixText) return '请先填写子网掩码位数'
+  if (!/^\d+$/.test(prefixText)) return '子网掩码位数必须是整数'
+
+  const prefix = Number(prefixText)
+  const { networkAddress: parentAddress, prefixLength: parentPrefixText } = splitCidr(
+    context.parent_plane.cidr
+  )
+  const parentIpVersion = getIpVersion(parentAddress)
+  const maxPrefix = parentIpVersion === 4 ? 32 : 128
+  if (!parentIpVersion || prefix > maxPrefix) {
+    return `${parentIpVersion === 4 ? 'IPv4' : 'IPv6'} 子网掩码位数范围为 0-${maxPrefix}`
+  }
+  if (prefix < Number(parentPrefixText)) {
+    return `子网掩码位数不能小于父平面的 /${parentPrefixText}`
+  }
+  return ''
 })
 
 const desContentStyle = { color: 'var(--color-text-primary)', fontSize: '13px' }
@@ -550,11 +599,51 @@ async function showEditPlaneDialog(row: RegionPlane) {
 
 function resetPlaneForm() {
   clearParentPlaneContextLookup()
+  cidrRecommendationRequestId += 1
+  cidrRecommendationLoading.value = false
   planeForm.value = createEmptyPlaneForm()
   isEditPlane.value = false
   editingPlaneId.value = ''
   planeSubmitting.value = false
   planeFormRef.value?.clearValidate()
+}
+
+async function fillRecommendedCidr() {
+  if (cidrRecommendationDisabledReason.value || !planeForm.value.plane_type_id) return
+
+  const planeTypeId = planeForm.value.plane_type_id
+  const scope = normalizePlaneScope(planeForm.value.scope)
+  const prefixLength = Number(planeForm.value.prefix_length.trim())
+  const requestId = ++cidrRecommendationRequestId
+  cidrRecommendationLoading.value = true
+  try {
+    const recommendation = await recommendRegionPlaneCidr(
+      props.id,
+      planeTypeId,
+      scope,
+      prefixLength
+    )
+    if (
+      requestId !== cidrRecommendationRequestId
+      || isEditPlane.value
+      || planeForm.value.plane_type_id !== planeTypeId
+      || normalizePlaneScope(planeForm.value.scope) !== scope
+      || Number(planeForm.value.prefix_length.trim()) !== prefixLength
+    ) return
+
+    const { networkAddress, prefixLength: recommendedPrefix } = splitCidr(recommendation.cidr)
+    planeForm.value.network_address = networkAddress
+    planeForm.value.prefix_length = recommendedPrefix
+    await nextTick()
+    planeFormRef.value?.clearValidate('network_address')
+    ElMessage.success(`已自动分配 ${recommendation.cidr}`)
+  } catch {
+    // Error handled by Axios interceptor
+  } finally {
+    if (requestId === cidrRecommendationRequestId) {
+      cidrRecommendationLoading.value = false
+    }
+  }
 }
 
 async function submitPlaneForm() {
@@ -713,6 +802,16 @@ onBeforeUnmount(clearParentPlaneContextLookup)
   grid-template-columns: minmax(0, 1fr) 24px 92px;
   align-items: center;
   width: 100%;
+}
+.cidr-input-group.has-recommendation-action {
+  grid-template-columns: minmax(0, 1fr) 24px 92px auto;
+}
+.cidr-recommendation-action {
+  display: inline-flex;
+  margin-left: 8px;
+}
+:deep(.cidr-recommendation-action .el-button) {
+  width: 88px;
 }
 :deep(.cidr-form-item .el-form-item__error) {
   position: static;

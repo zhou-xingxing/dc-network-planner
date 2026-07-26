@@ -74,3 +74,9 @@ export interface ParentPlaneContext {
   parent_type_name?: string | null
   parent_plane?: ParentPlaneInstance | null
 }
+
+export interface RegionPlaneCidrRecommendation {
+  cidr: string
+  parent_plane_id: EntityId
+  parent_cidr: string
+}

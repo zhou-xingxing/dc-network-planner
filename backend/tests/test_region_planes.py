@@ -785,6 +785,160 @@ def test_get_parent_context_allows_read_without_region_write_permission(client, 
     assert resp.json()["status"] == "root"
 
 
+def _recommend_cidr(client, region_id, plane_type_id, prefix_length, headers, scope="Global"):
+    """请求 Region 子平面的可用 CIDR 推荐。"""
+    return client.get(
+        f"/api/regions/{region_id}/planes/cidr-recommendation",
+        params={
+            "plane_type_id": plane_type_id,
+            "scope": scope,
+            "prefix_length": prefix_length,
+        },
+        headers=headers,
+    )
+
+
+def test_recommend_cidr_avoids_occupied_subnet_across_scopes(
+    client,
+    admin_headers,
+    user_headers_factory,
+):
+    """CIDR 推荐应跨作用域避开已占用网段，并返回实际父平面内最低可用子网。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    used_type = _create_plane_type(client, admin_headers, "已用子平面", parent_id=root_pt["id"]).json()
+    target_type = _create_plane_type(client, admin_headers, "待分配子平面", parent_id=root_pt["id"]).json()
+    parent = _create_region_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers).json()
+    _create_region_plane(
+        client,
+        region["id"],
+        used_type["id"],
+        "10.0.0.0/23",
+        user_headers,
+        scope="业务AZ1",
+    )
+
+    resp = _recommend_cidr(
+        client,
+        region["id"],
+        target_type["id"],
+        24,
+        user_headers,
+        scope="业务AZ2",
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "cidr": "10.0.2.0/24",
+        "parent_plane_id": parent["id"],
+        "parent_cidr": "10.0.0.0/22",
+    }
+
+
+def test_recommend_ipv6_cidr_returns_next_available_subnet(client, admin_headers, user_headers_factory):
+    """IPv6 父平面的首个目标子网被占用时，应推荐下一个可用子网。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    used_type = _create_plane_type(client, admin_headers, "已用IPv6子平面", parent_id=root_pt["id"]).json()
+    target_type = _create_plane_type(client, admin_headers, "待分配IPv6子平面", parent_id=root_pt["id"]).json()
+    _create_region_plane(
+        client,
+        region["id"],
+        root_pt["id"],
+        "2001:db8::/64",
+        user_headers,
+    ).json()
+    _create_region_plane(
+        client,
+        region["id"],
+        used_type["id"],
+        "2001:db8::/80",
+        user_headers,
+    )
+
+    resp = _recommend_cidr(client, region["id"], target_type["id"], 80, user_headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["cidr"] == "2001:db8:0:0:1::/80"
+
+
+def test_recommend_cidr_rejects_root_plane_type(client, admin_headers, user_headers_factory):
+    """根网络平面没有父范围，不能自动分配 CIDR。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+
+    resp = _recommend_cidr(client, region["id"], root_pt["id"], 24, user_headers)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "根网络平面没有父平面，无法自动分配 CIDR"
+
+
+def test_recommend_cidr_rejects_missing_parent_instance(client, admin_headers, user_headers_factory):
+    """子类型找不到有效父实例时不能自动分配 CIDR。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+
+    resp = _recommend_cidr(client, region["id"], child_pt["id"], 24, user_headers)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "父级网络平面尚未在该 Region 创建，无法自动分配 CIDR"
+
+
+@pytest.mark.parametrize(
+    ("prefix_length", "expected_detail"),
+    [
+        (21, "子网掩码位数 /21 不能小于父平面 CIDR 10.0.0.0/22 的 /22"),
+        (33, "IPv4 子网掩码位数范围为 0-32"),
+    ],
+)
+def test_recommend_cidr_rejects_invalid_prefix_for_parent(
+    client,
+    admin_headers,
+    user_headers_factory,
+    prefix_length,
+    expected_detail,
+):
+    """目标掩码必须符合父平面的地址族和包含关系。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    _create_region_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers)
+
+    resp = _recommend_cidr(client, region["id"], child_pt["id"], prefix_length, user_headers)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == expected_detail
+
+
+def test_recommend_cidr_reports_exhausted_parent_space(client, admin_headers, user_headers_factory):
+    """父平面内所有目标大小网段都已占用时返回明确错误。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_a = _create_plane_type(client, admin_headers, "子平面A", parent_id=root_pt["id"]).json()
+    child_b = _create_plane_type(client, admin_headers, "子平面B", parent_id=root_pt["id"]).json()
+    target_type = _create_plane_type(client, admin_headers, "待分配子平面", parent_id=root_pt["id"]).json()
+    _create_region_plane(client, region["id"], root_pt["id"], "10.0.0.0/30", user_headers)
+    _create_region_plane(client, region["id"], child_a["id"], "10.0.0.0/31", user_headers)
+    _create_region_plane(client, region["id"], child_b["id"], "10.0.0.2/31", user_headers)
+
+    resp = _recommend_cidr(client, region["id"], target_type["id"], 31, user_headers)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "父平面 10.0.0.0/30 中没有可用的 /31 网段"
+
+
+def test_recommend_cidr_allows_read_without_region_write_permission(
+    client,
+    admin_headers,
+    user_headers_factory,
+):
+    """CIDR 推荐是只读接口，不要求目标 Region 的业务写权限。"""
+    region, root_pt, writer_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    _create_region_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", writer_headers)
+    reader_headers = user_headers_factory([], username="reader")
+
+    resp = _recommend_cidr(client, region["id"], child_pt["id"], 24, reader_headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["cidr"] == "10.0.0.0/24"
+
+
 def test_create_child_outside_parent(client, admin_headers, user_headers_factory):
     """子 CIDR 超出父范围应报错。"""
     region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)

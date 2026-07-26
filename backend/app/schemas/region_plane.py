@@ -48,6 +48,14 @@ class ParentPlaneContextResponse(BaseModel):
     parent_plane: ParentPlaneInstanceResponse | None = None
 
 
+class CidrRecommendationResponse(BaseModel):
+    """父平面内的可用 CIDR 推荐结果。"""
+
+    cidr: str
+    parent_plane_id: str
+    parent_cidr: str
+
+
 class RegionPlaneCreate(BaseModel):
     plane_type_id: str
     scope: str | None = Field("Global", max_length=100, description="作用域，空值会归一化为 Global")

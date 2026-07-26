@@ -7,12 +7,18 @@ from app.database import get_db
 from app.dependencies import get_current_user, operator_name, require_region_business_write
 from app.exceptions import BusinessError, ResourceNotFoundError
 from app.models.user import User
-from app.schemas.region_plane import ParentPlaneContextResponse, RegionPlaneCreate, RegionPlaneUpdate
+from app.schemas.region_plane import (
+    CidrRecommendationResponse,
+    ParentPlaneContextResponse,
+    RegionPlaneCreate,
+    RegionPlaneUpdate,
+)
 from app.services.region_plane import (
     create_plane_for_region,
     delete_plane_for_region,
     get_parent_plane_context,
     get_region_plane_tree_for_region,
+    recommend_cidr_for_region,
     serialize_parent_plane_context,
     serialize_region_plane_result,
     update_plane_for_region,
@@ -47,6 +53,34 @@ def get_parent_plane_context_endpoint(
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return serialize_parent_plane_context(context)
+
+
+@router.get("/cidr-recommendation", response_model=CidrRecommendationResponse)
+def recommend_cidr_endpoint(
+    region_id: str,
+    plane_type_id: str = Query(..., min_length=1),
+    prefix_length: int = Query(..., ge=0, le=128),
+    scope: str = Query("Global", max_length=100),
+    db: Session = Depends(get_db),
+) -> CidrRecommendationResponse:
+    """按实际父平面和目标掩码推荐可用 CIDR。"""
+    try:
+        recommendation = recommend_cidr_for_region(
+            db,
+            region_id,
+            plane_type_id,
+            prefix_length,
+            scope,
+        )
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return CidrRecommendationResponse(
+        cidr=recommendation.cidr,
+        parent_plane_id=recommendation.parent_plane.id,
+        parent_cidr=recommendation.parent_plane.cidr,
+    )
 
 
 @router.post("", status_code=201)

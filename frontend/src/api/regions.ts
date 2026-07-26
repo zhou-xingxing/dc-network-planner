@@ -9,6 +9,7 @@ import type {
   RegionCreatePayload,
   RegionDetail,
   RegionPlane,
+  RegionPlaneCidrRecommendation,
   RegionPlaneCreatePayload,
   RegionPlaneUpdatePayload,
   RegionUpdatePayload,
@@ -46,6 +47,24 @@ export function fetchParentPlaneContext(
   return request.get<ParentPlaneContext, ParentPlaneContext>(`/regions/${regionId}/planes/parent-context`, {
     params: { plane_type_id: planeTypeId, scope },
   })
+}
+
+export function recommendRegionPlaneCidr(
+  regionId: EntityId,
+  planeTypeId: EntityId,
+  scope: string,
+  prefixLength: number
+): Promise<RegionPlaneCidrRecommendation> {
+  return request.get<RegionPlaneCidrRecommendation, RegionPlaneCidrRecommendation>(
+    `/regions/${regionId}/planes/cidr-recommendation`,
+    {
+      params: {
+        plane_type_id: planeTypeId,
+        scope,
+        prefix_length: prefixLength,
+      },
+    }
+  )
 }
 
 export function createRegionPlane(regionId: EntityId, data: RegionPlaneCreatePayload): Promise<RegionPlane> {

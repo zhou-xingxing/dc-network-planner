@@ -14,4 +14,9 @@ from app.schemas.region import (
     RegionResponse,
     RegionUpdate,
 )
-from app.schemas.region_plane import RegionPlaneCreate, RegionPlaneResponse, RegionPlaneUpdate
+from app.schemas.region_plane import (
+    CidrRecommendationResponse,
+    RegionPlaneCreate,
+    RegionPlaneResponse,
+    RegionPlaneUpdate,
+)

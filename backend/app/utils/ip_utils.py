@@ -130,6 +130,64 @@ def network_is_subnet_of(child: IPNetwork, parent: IPNetwork) -> bool:
     return False
 
 
+def find_first_available_subnet(
+    parent: IPNetwork,
+    prefix_length: int,
+    occupied_networks: list[IPNetwork],
+) -> IPNetwork | None:
+    """在父网段内查找地址最低的首个可用子网。
+
+    已占用网段先转换成目标子网序号区间，再合并区间寻找空洞，避免
+    枚举 IPv6 父网段可能包含的海量候选子网。
+
+    Args:
+        parent: 用于分配子网的父网段。
+        prefix_length: 目标子网的掩码位数。
+        occupied_networks: 不能与候选子网重叠的已有网段。
+
+    Returns:
+        地址最低的首个可用子网；父网段空间耗尽时返回 None。
+
+    Raises:
+        ValueError: 目标掩码无法在父网段内形成子网。
+    """
+    if prefix_length < parent.prefixlen or prefix_length > parent.max_prefixlen:
+        raise ValueError("目标掩码必须位于父网段掩码与地址族最大掩码之间")
+
+    parent_start = int(parent.network_address)
+    parent_end = int(parent.broadcast_address)
+    block_size = 1 << (parent.max_prefixlen - prefix_length)
+    candidate_count = parent.num_addresses // block_size
+    blocked_ranges: list[tuple[int, int]] = []
+
+    for occupied in occupied_networks:
+        if occupied.version != parent.version or not occupied.overlaps(parent):
+            continue
+        occupied_start = max(parent_start, int(occupied.network_address))
+        occupied_end = min(parent_end, int(occupied.broadcast_address))
+        blocked_ranges.append(
+            (
+                (occupied_start - parent_start) // block_size,
+                (occupied_end - parent_start) // block_size,
+            )
+        )
+
+    candidate_index = 0
+    for blocked_start, blocked_end in sorted(blocked_ranges):
+        if blocked_end < candidate_index:
+            continue
+        if blocked_start > candidate_index:
+            break
+        candidate_index = blocked_end + 1
+        if candidate_index >= candidate_count:
+            return None
+
+    candidate_start = parent_start + candidate_index * block_size
+    if isinstance(parent, ipaddress.IPv4Network):
+        return ipaddress.IPv4Network((candidate_start, prefix_length))
+    return ipaddress.IPv6Network((candidate_start, prefix_length))
+
+
 def find_overlapping(cidr_str: str, existing_cidrs: list[str]) -> list[str]:
     """Find which existing CIDRs overlap with the given CIDR.
 

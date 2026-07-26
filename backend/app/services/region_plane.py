@@ -15,6 +15,7 @@ from app.services.change_log import log_change
 from app.utils.ip_utils import (
     IPNetwork,
     cidr_uses_host_address,
+    find_first_available_subnet,
     ip_belongs_to_network,
     network_is_subnet_of,
     parse_cidr,
@@ -49,6 +50,14 @@ class ParentPlaneContext:
     requested_scope: str
     parent_type: NetworkPlaneType | None
     parent_plane: RegionNetworkPlane | None
+
+
+@dataclass(frozen=True)
+class CidrRecommendation:
+    """父平面内的可用 CIDR 推荐结果。"""
+
+    cidr: str
+    parent_plane: RegionNetworkPlane
 
 
 def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
@@ -163,6 +172,80 @@ def get_parent_plane_context(
         raise ResourceNotFoundError("父级网络平面类型不存在")
     parent_plane = _find_parent_plane(db, region_id, parent_type.id, normalized_scope)
     return ParentPlaneContext(normalized_scope, parent_type, parent_plane)
+
+
+def recommend_cidr_for_region(
+    db: Session,
+    region_id: str,
+    plane_type_id: str,
+    prefix_length: int,
+    scope: str | None = DEFAULT_PLANE_SCOPE,
+) -> CidrRecommendation:
+    """在实际生效的父平面内推荐地址最低的可用 CIDR。
+
+    推荐只读取当前数据库状态，不会占用或锁定网段。最终创建时仍由
+    ``create_plane_for_region`` 基于最新数据库状态重新校验 CIDR 冲突。
+
+    Args:
+        db: 数据库会话。
+        region_id: Region ID。
+        plane_type_id: 待创建的子网络平面类型 ID。
+        prefix_length: 目标子网掩码位数。
+        scope: 待创建实例的作用域。
+
+    Returns:
+        推荐 CIDR 及其实际父平面实例。
+
+    Raises:
+        ResourceNotFoundError: Region、网络平面类型或父类型不存在。
+        BusinessError: 根类型、缺少父实例、父 CIDR 无效、掩码不适用或空间耗尽。
+    """
+    context = get_parent_plane_context(db, region_id, plane_type_id, scope)
+    if not context.parent_type:
+        raise BusinessError("根网络平面没有父平面，无法自动分配 CIDR")
+    if not context.parent_plane:
+        raise BusinessError("父级网络平面尚未在该 Region 创建，无法自动分配 CIDR")
+    if not context.parent_plane.cidr:
+        raise BusinessError("父级网络平面没有 CIDR 范围，无法自动分配 CIDR")
+
+    parent_net = parse_cidr(context.parent_plane.cidr)
+    if not parent_net:
+        raise BusinessError("父级网络平面 CIDR 格式无效，无法自动分配 CIDR")
+    if prefix_length > parent_net.max_prefixlen:
+        address_family = "IPv4" if parent_net.version == 4 else "IPv6"
+        raise BusinessError(f"{address_family} 子网掩码位数范围为 0-{parent_net.max_prefixlen}")
+    if prefix_length < parent_net.prefixlen:
+        raise BusinessError(
+            f"子网掩码位数 /{prefix_length} 不能小于父平面 CIDR "
+            f"{context.parent_plane.cidr} 的 /{parent_net.prefixlen}"
+        )
+
+    ancestor_planes = [context.parent_plane]
+    ancestor_planes.extend(
+        _collect_effective_ancestors(
+            db,
+            region_id,
+            context.parent_type,
+            context.parent_plane.scope,
+        )
+    )
+    ancestor_ids = {plane.id for plane in ancestor_planes}
+    query = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.cidr.isnot(None))
+    if settings.ALLOW_CIDR_OVERLAP_ACROSS_REGIONS:
+        query = query.filter(RegionNetworkPlane.region_id == region_id)
+
+    occupied_networks: list[IPNetwork] = []
+    for plane in query.all():
+        if plane.id in ancestor_ids or not plane.cidr:
+            continue
+        occupied_net = parse_cidr(plane.cidr)
+        if occupied_net:
+            occupied_networks.append(occupied_net)
+
+    recommendation = find_first_available_subnet(parent_net, prefix_length, occupied_networks)
+    if not recommendation:
+        raise BusinessError(f"父平面 {context.parent_plane.cidr} 中没有可用的 /{prefix_length} 网段")
+    return CidrRecommendation(recommendation.with_prefixlen, context.parent_plane)
 
 
 def create_plane_for_region(

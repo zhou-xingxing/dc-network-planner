@@ -11,7 +11,10 @@ from app.database import Base
 from app.utils.time_utils import utcnow_db
 
 if TYPE_CHECKING:
+    from app.models.cabling import CablingBatch
+    from app.models.rack import Rack
     from app.models.region_network_plane import RegionNetworkPlane
+    from app.models.switch import SwitchGroup
     from app.models.user import UserRegionPermission
 
 
@@ -34,4 +37,11 @@ class Region(Base):
     )
     region_permissions: Mapped[list[UserRegionPermission]] = relationship(
         "UserRegionPermission", back_populates="region", cascade="all, delete-orphan"
+    )
+    racks: Mapped[list[Rack]] = relationship("Rack", back_populates="region", passive_deletes=True)
+    switch_groups: Mapped[list[SwitchGroup]] = relationship(
+        "SwitchGroup", back_populates="region", passive_deletes=True
+    )
+    cabling_batches: Mapped[list[CablingBatch]] = relationship(
+        "CablingBatch", back_populates="region", passive_deletes=True
     )

@@ -53,7 +53,7 @@ graph TB
         Deps["Dependencies<br/>Web JWT 认证 · 外部 API Token 认证 · scope 校验 · 角色校验 · Region 授权校验"]
         Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / excel / external_token / change_log / backup<br/>· 外部 API 访问令牌签发与管理员撤销<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
         Utils["Utils（工具函数）<br/>密码哈希与校验 · IP/CIDR 解析 · Excel 文件处理 · 时间转换"]
-        Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / ExternalAccessToken / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
+        Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / ExternalAccessToken / Region / NetworkPlaneType / RegionNetworkPlane /<br/>Rack / SwitchBusinessType / SwitchGroup / Switch / SwitchPort / CablingBatch / CableEntry /<br/>ChangeLog / BackupConfig / BackupRecord"]
         Routers --> Deps
         Deps --> Services
         Routers --> Services --> Models
@@ -144,12 +144,22 @@ HTTP 请求遵循 `routers/ -> services/ -> models/`；Schema 只定义 API 数�
 
 ```mermaid
 erDiagram
-    User ||--o{ UserRegionPermission : "拥有权限"
-    User ||--o{ ExternalAccessToken : "签发"
-    Region ||--o{ UserRegionPermission : "权限范围"
-    Region ||--o{ RegionNetworkPlane : "1:N"
-    NetworkPlaneType ||--o{ NetworkPlaneType : "self parent-child"
-    NetworkPlaneType ||--o{ RegionNetworkPlane : "1:N"
+    User ||--o{ UserRegionPermission : "拥有权限 · CASCADE"
+    User ||--o{ ExternalAccessToken : "签发 · CASCADE"
+    Region ||--o{ UserRegionPermission : "权限范围 · CASCADE"
+    Region ||--o{ RegionNetworkPlane : "包含平面实例 · CASCADE"
+    NetworkPlaneType o|--o{ NetworkPlaneType : "可选父类型 · RESTRICT"
+    NetworkPlaneType ||--o{ RegionNetworkPlane : "定义类型 · RESTRICT"
+    Region ||--o{ Rack : "包含机柜 · RESTRICT"
+    Region ||--o{ SwitchGroup : "包含交换机组 · RESTRICT"
+    Region ||--o{ CablingBatch : "包含布线批次 · RESTRICT"
+    Rack ||--o{ Switch : "上架交换机 · RESTRICT"
+    Rack ||--o{ CableEntry : "服务器侧位置 · RESTRICT"
+    SwitchBusinessType ||--o{ SwitchGroup : "定义业务类型 · RESTRICT"
+    SwitchGroup o|--o{ Switch : "可选归组 · RESTRICT"
+    Switch ||--o{ SwitchPort : "拥有端口 · CASCADE"
+    CablingBatch ||--o{ CableEntry : "包含线缆条目 · RESTRICT"
+    SwitchPort ||--o| CableEntry : "交换机端 · RESTRICT"
 
     User {
         string id PK
@@ -253,11 +263,88 @@ erDiagram
         datetime started_at
         datetime finished_at
     }
+
+    Rack {
+        string id PK
+        string region_id FK
+        string name UK
+        int u_height
+        datetime created_at
+        datetime updated_at
+    }
+
+    SwitchBusinessType {
+        string id PK
+        string code UK
+        string name UK
+        datetime created_at
+        datetime updated_at
+    }
+
+    SwitchGroup {
+        string id PK
+        string region_id FK
+        string business_type_id FK
+        string name UK
+        string group_mode
+        datetime created_at
+        datetime updated_at
+    }
+
+    Switch {
+        string id PK
+        string rack_id FK
+        string switch_group_id FK "UK(switch_group_id, member_role)"
+        string member_role "UK(switch_group_id, member_role)"
+        string name UK
+        int port_speed_mbps
+        int start_u
+        int height_u
+        datetime created_at
+        datetime updated_at
+    }
+
+    SwitchPort {
+        string id PK
+        string switch_id FK "UK(switch_id, port_number)"
+        int port_number "UK(switch_id, port_number)"
+        datetime created_at
+        datetime updated_at
+    }
+
+    CablingBatch {
+        string id PK
+        string region_id FK "UK(region_id, name)"
+        string name "UK(region_id, name)"
+        string created_by
+        text comment
+        datetime created_at
+        datetime updated_at
+    }
+
+    CableEntry {
+        string id PK
+        string batch_id FK
+        string server_rack_id FK "UK(server_rack_id, server_start_u, server_port_name)"
+        int server_start_u "UK(server_rack_id, server_start_u, server_port_name)"
+        int server_height_u
+        string server_port_name "UK(server_rack_id, server_start_u, server_port_name)"
+        string switch_port_id FK, UK
+        string cable_label UK
+        int cable_sequence
+        text comment
+        datetime created_at
+        datetime updated_at
+    }
 ```
 
 ### 4.2 核心表设计
 
 SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA foreign_keys=ON`，确保表结构中的 FK 和 `ON DELETE` 约束在运行时生效。测试用内存 SQLite 使用同一连接配置，避免测试环境与实际运行环境的外键行为不一致。
+
+下列表结构中的 `CASCADE` 表示删除父记录时由数据库自动删除相关子记录；`RESTRICT` 表示只要仍存在相关子记录，数据库就拒绝删除父记录。当前模型没有使用 `SET NULL`。每张表涉及的具体删除行为随表结构一并说明。
+
+ORM 关系中的 `cascade="all, delete-orphan"` 配置在用户授权、Region 网络平面实例和交换机端口关系上。其中 `Switch.ports` 同时使用 `passive_deletes=True`，由数据库执行端口级联并保留 `CableEntry` 的 `RESTRICT` 保护；布线域其余父子关系不配置 ORM 删除级联，由数据库外键统一裁决删除行为。
 
 #### users
 
@@ -266,12 +353,14 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 | id | String(36) UUID | PK | UUID v4 |
 | username | String(100) | NOT NULL, UNIQUE, INDEX | 登录用户名 |
 | password_hash | String(255) | NOT NULL | PBKDF2-HMAC-SHA256 密码哈希 |
-| role | String(20) | NOT NULL, INDEX | administrator/user |
+| role | String(20) | NOT NULL, INDEX, default=user | administrator/user |
 | is_active | Boolean | NOT NULL, default=true | 是否允许登录 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
 本地账号表。系统启动时若 `users` 表为空，会创建一个 bootstrap administrator。
+
+**删除规则**：删除用户时，数据库会同时删除该用户的外部访问令牌和 Region 授权。
 
 #### external_access_tokens
 
@@ -281,7 +370,7 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 |---|---|---|---|
 | id | String(36) UUID | PK | Token 记录 ID |
 | token_hash | String(64) | NOT NULL, UNIQUE, INDEX | 原始 Token 的 SHA-256 哈希 |
-| user_id | String(36) | NOT NULL, FK users.id, INDEX | 被委托的本地用户 |
+| user_id | String(36) | NOT NULL, FK -> users.id, CASCADE, INDEX | 被委托的本地用户 |
 | scopes | Text | NOT NULL | JSON 格式的 scope 列表 |
 | created_at | DateTime | NOT NULL | 签发时间 |
 | expires_at | DateTime | NOT NULL, INDEX | 过期时间 |
@@ -314,6 +403,8 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
+**删除规则**：删除 Region 时，只要仍有关联的机柜、交换机组或布线批次，数据库就会拒绝整个删除操作；这些依赖清理后，Region 网络平面实例和用户对该 Region 的授权会随 Region 一并删除。
+
 #### network_plane_types
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -328,6 +419,8 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
 全局目录表，所有 Region 共享。网络平面父子层级在此表维护，所有 Region 使用同一棵类型树，最多 3 级嵌套。
+
+**删除规则**：存在直接子类型，或者仍有 Region 网络平面实例使用该类型时，数据库会拒绝删除该网络平面类型。
 
 #### region_network_planes
 
@@ -346,13 +439,140 @@ SQLite 连接初始化时通过 SQLAlchemy `connect` 事件显式执行 `PRAGMA 
 
 Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 创建多个实例，空作用域在接口层归一化为 `Global`。Region 内 CIDR 不允许与非层级关系平面重叠；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。CIDR 是否允许跨 Region 重叠由启动期静态配置 `ALLOW_CIDR_OVERLAP_ACROSS_REGIONS` 控制。
 
+#### racks
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| region_id | String(36) | FK -> regions.id, RESTRICT, INDEX | 所属 Region |
+| name | String(100) | NOT NULL, UNIQUE | 全局唯一的机柜名称 |
+| u_height | Integer | NOT NULL, > 0, ORM default=42 | 机柜总 U 数 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+机柜用于定位交换机上架位置和线缆的服务器侧物理位置。服务器不作为独立资产维护，其位置直接记录在线缆条目中。
+
+**删除规则**：机柜内仍有交换机，或者仍被线缆条目用作服务器侧位置时，数据库会拒绝删除机柜，不会连带删除设备或线缆条目。
+
+#### switch_business_types
+
+交换机组使用的全局业务类型配置表。系统初始预置业务、管理、存储和带外四种类型，后续可以直接新增类型，不需要修改数据库约束。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| code | String(50) | NOT NULL, UNIQUE | 全局唯一的英文标识，如 business |
+| name | String(100) | NOT NULL, UNIQUE | 全局唯一的中文名称，如业务 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+`code` 用于接口、导入导出和程序识别，`name` 用于界面展示。业务类型本身不控制交换机组成员规则；成员规则仍由固定的 `group_mode` 决定。
+
+**删除规则**：仍有交换机组使用该业务类型时，数据库会拒绝删除业务类型；要删除类型，必须先将相关交换机组改为其他类型。
+
+#### switch_groups
+
+具有共同业务类型和成员模式的交换机组表。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| region_id | String(36) | FK -> regions.id, RESTRICT, INDEX | 所属 Region |
+| business_type_id | String(36) | FK -> switch_business_types.id, RESTRICT, INDEX | 业务类型 |
+| name | String(100) | NOT NULL, UNIQUE | 全局唯一的交换机组名称 |
+| group_mode | String(20) | NOT NULL, CHECK | pair 表示 A/B 对，single 表示单交换机组 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+**删除规则**：交换机组内仍有交换机时，数据库会拒绝删除交换机组。
+
+#### switches
+
+交换机资产、机柜上架位置和交换机组成员关系表。交换机通过自身的 `switch_group_id` 和 `member_role` 加入至多一个组，不额外维护成员关联表。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| rack_id | String(36) | FK -> racks.id, RESTRICT, INDEX | 上架机柜 |
+| switch_group_id | String(36) | NULLABLE, FK -> switch_groups.id, RESTRICT, INDEX | 所属交换机组 |
+| member_role | String(20) | NULLABLE, CHECK, UNIQUE(switch_group_id, member_role) | 组内角色：a/b/single |
+| name | String(100) | NOT NULL, UNIQUE | 全局唯一的交换机名称 |
+| port_speed_mbps | Integer | NOT NULL, > 0 | 所有端口统一使用的规划速率，单位 Mbps |
+| start_u | Integer | NOT NULL, > 0 | 起始 U 位 |
+| height_u | Integer | NOT NULL, > 0, ORM default=1 | 占用 U 数 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+交换机通过机柜确定所属 Region。当前 MVP 假定同一台交换机的所有端口使用相同规划速率，因此速率统一保存在 `port_speed_mbps`，界面负责将 1000、10000、25000 等整数显示为 1GE、10GE、25GE。`switch_group_id` 与 `member_role` 必须同时为空或同时非空。数据库能保证交换机至多属于一个组且组内角色不重复，但无法通过单行 CHECK 验证组成员数量。后续 Service 必须保证 `pair` 组恰好包含 a、b 两个成员，`single` 组恰好包含一个 single 成员，并校验机柜与交换机组属于同一 Region。允许交换机先以未分组状态录入资源台账；未完成成员配置的组不能用于布线规划。
+
+#### switch_ports
+
+交换机侧可参与布线规划的物理端口表。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| switch_id | String(36) | FK -> switches.id, CASCADE, INDEX | 所属交换机 |
+| port_number | Integer | NOT NULL, > 0, UNIQUE(switch_id, port_number) | 交换机内唯一的端口编号 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+当前 MVP 使用统一的端口编号规则，端口显示名称由 `port_number` 推导，不单独保存名称。端口是否已有线缆通过是否存在引用该端口的 `CableEntry` 判断，不重复保存可分配或占用状态。
+
+**删除规则**：删除交换机时，数据库会同时删除该交换机未被布线引用的端口。如果任一端口已被线缆条目引用，数据库会拒绝整个交换机删除操作，不会只删除部分端口，也不会连带删除线缆条目。删除单个交换机端口时同样遵守此规则。
+
+#### cabling_batches
+
+一次确认并持久化的布线批次表。预览结果不是正式业务实体，不写入该表。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| region_id | String(36) | FK -> regions.id, RESTRICT, INDEX | 所属 Region |
+| name | String(150) | NOT NULL, UNIQUE(region_id, name) | Region 内唯一的批次名称 |
+| created_by | String(100) | NOT NULL | 创建人用户名快照 |
+| comment | Text | NULLABLE | 批次备注 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+**删除规则**：布线批次内仍有线缆条目时，数据库会拒绝删除该批次；清空条目后才允许删除批次。
+
+#### cable_entries
+
+布线批次中的线缆条目表，每条记录表示一根线，保存唯一线签、交换机物理端口及服务器侧端点标识。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | String(36) UUID | PK | UUID v4 |
+| batch_id | String(36) | FK -> cabling_batches.id, RESTRICT, INDEX | 所属布线批次 |
+| server_rack_id | String(36) | FK -> racks.id, RESTRICT, INDEX | 服务器侧所在机柜 |
+| server_start_u | Integer | NOT NULL, > 0 | 服务器侧设备的起始 U 位 |
+| server_height_u | Integer | NOT NULL, > 0, ORM default=1 | 服务器侧设备占用的 U 数 |
+| server_port_name | String(100) | NOT NULL | 服务器侧端口标识，如 NIC1、iDRAC |
+| switch_port_id | String(36) | FK -> switch_ports.id, RESTRICT, INDEX | 交换机端口 |
+| cable_label | String(100) | NOT NULL, UNIQUE | 全局唯一的线签 |
+| cable_sequence | Integer | NOT NULL, > 0 | 同一交换机连接到同一服务器侧机柜的线序号 |
+| comment | Text | NULLABLE | 单根线备注 |
+| created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
+
+表级唯一约束分别覆盖 `(server_rack_id, server_start_u, server_port_name)`、`switch_port_id` 和 `cable_label`，保证同一机柜起始 U 位上的同名服务器端口、交换机物理端口或线签只能对应一根线。`server_height_u` 不参与端点唯一约束，避免通过误填不同高度绕过端口占用校验。服务器侧显示位置由 `server_start_u + server_height_u - 1` 派生，例如起始 U 位为 1、高度为 2 时显示为 `01U-02U`。
+
+`cable_sequence` 表示某台交换机连接到某个服务器侧机柜的第几根线，跨布线批次保持同一编号空间。交换机由 `switch_port_id` 关联推导，因此 `CableEntry` 不重复保存 `switch_id`，数据库也不对该跨表组合建立唯一约束；后续 Service 创建或修改条目时，必须保证同一交换机、同一服务器侧机柜内的 `cable_sequence` 唯一，并可按现有最大序号自动分配下一个值。
+
+后续 Service 还必须校验服务器侧位置未超出机柜高度，且布线批次、服务器侧机柜和交换机属于同一 Region；同一机柜与起始 U 位的所有条目必须使用相同高度，完全相同的位置可配置多个不同端口，不同位置范围之间以及服务器侧位置与交换机上架位置之间均不得重叠。查询某个 U 位的线缆数量时，按 `server_start_u <= 目标 U 位 <= server_start_u + server_height_u - 1` 筛选。
+
+线缆条目存在表示这根线存在；拆线或撤销规划时直接删除条目，并释放对应端口和线签。删除某个服务器侧位置的最后一条线缆后，系统不再保留该位置存在服务器的信息。后续 Service 删除条目前必须先写入变更日志，保留可追溯的端点和线签信息。
+
+**删除规则**：线缆条目不会随着布线批次、服务器侧机柜或交换机端口自动删除。只要条目仍然存在，数据库就会拒绝删除它引用的批次、机柜或交换机端口。
+
 #### change_logs
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
-| entity_type | String(50) | NOT NULL, INDEX | 实体类型 |
-| entity_id | String(36) | NOT NULL, INDEX | 实体 ID |
+| entity_type | String(50) | NOT NULL, COMPOSITE INDEX(entity_type, entity_id) | 实体类型 |
+| entity_id | String(36) | NOT NULL, COMPOSITE INDEX(entity_type, entity_id) | 实体 ID |
 | entity_name | String(255) | NULLABLE | 面向用户展示的变更对象名称快照 |
 | action | String(20) | NOT NULL | create/update/delete/import |
 | field_name | String(100) | NULLABLE | update 时记录字段名 |
@@ -391,12 +611,12 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
-| status | String(20) | NOT NULL | success/failed |
+| status | String(20) | NOT NULL, default=running | running/success/failed |
 | method | String(30) | NOT NULL | 本次执行使用的备份方式 |
 | target | String(800) | NULLABLE | 本地文件路径或完整对象存储备份路径 |
 | file_size | Integer | NULLABLE | 备份文件大小（字节） |
 | error_message | Text | NULLABLE | 失败原因 |
-| operator | String(100) | NOT NULL | 操作者，定时任务为 system |
+| operator | String(100) | NOT NULL, default=system | 操作者，定时任务为 system |
 | started_at | DateTime | NOT NULL | 开始时间 |
 | finished_at | DateTime | NULLABLE | 完成时间 |
 
@@ -872,6 +1092,12 @@ flowchart TD
 **理由**：当前系统是内部部署的管理工具，暂不引入 SSO/OIDC 可降低部署复杂度；两类角色与 TODO 中的权限边界一致。Region 授权单独建 `user_region_permissions` 表，既能表达普通 `user` 的业务写权限范围，也避免把权限规则散落在前端。
 
 **审计策略**：变更日志仍由 Service 层显式写入，但 `operator` 由 Router 层从当前登录用户解析得到，前端不再传递操作者字段。
+
+### 6.11 交换机布线领域边界
+
+交换机布线是独立的 Region 业务域，只复用 Region、用户权限、审计、事务和备份基础设施，不依赖 `NetworkPlaneType`、`RegionNetworkPlane`、CIDR、VLAN 或现有 Excel 导入模型。
+
+本模块只维护布线规划所需的交换机、端口及服务器侧物理端点，不维护服务器资产、线缆库存、实际施工、在线观测或对账状态。具体字段、约束和删除规则以[核心表设计](#42-核心表设计)中的对应表说明为准；后续 Service 应将数据库删除限制转换为可读的依赖关系错误。
 
 ## 7. 前端路由设计
 

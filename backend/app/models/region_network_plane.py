@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, gen_uuid
 from app.utils.time_utils import utcnow_db
 
 if TYPE_CHECKING:
     from app.models.network_plane_type import NetworkPlaneType
     from app.models.region import Region
-
-
-def gen_uuid() -> str:
-    return str(uuid.uuid4())
 
 
 class RegionNetworkPlane(Base):

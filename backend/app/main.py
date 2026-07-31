@@ -30,9 +30,13 @@ from app.routers import (
     external_network_plane_type,
     lookup,
     network_plane_type,
+    rack,
     region,
     region_plane,
     stats,
+    switch,
+    switch_business_type,
+    switch_group,
     user,
 )
 from app.services.backup import ensure_backup_config
@@ -107,8 +111,12 @@ app.add_exception_handler(Exception, cast(Any, unexpected_error_handler))
 app.include_router(openapi_docs_router)
 app.include_router(auth.router)
 app.include_router(region.router)
+app.include_router(rack.router)
 app.include_router(region_plane.router)
 app.include_router(network_plane_type.router)
+app.include_router(switch_business_type.router)
+app.include_router(switch_group.router)
+app.include_router(switch.router)
 app.include_router(lookup.router)
 app.include_router(excel.router)
 app.include_router(external_auth.router)

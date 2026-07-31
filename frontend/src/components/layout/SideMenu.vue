@@ -38,6 +38,20 @@
         <el-icon><Connection /></el-icon>
         <span>网络平面类型</span>
       </el-menu-item>
+      <el-sub-menu index="switch-cabling">
+        <template #title>
+          <el-icon><Share /></el-icon>
+          <span>交换机布线</span>
+        </template>
+        <el-menu-item index="/switch-cabling/racks">
+          <el-icon><Box /></el-icon>
+          <span>机柜管理</span>
+        </el-menu-item>
+        <el-menu-item index="/switch-cabling/switches">
+          <el-icon><Operation /></el-icon>
+          <span>交换机管理</span>
+        </el-menu-item>
+      </el-sub-menu>
       <el-menu-item index="/lookup">
         <el-icon><Search /></el-icon>
         <span>IP 查找</span>
@@ -73,14 +87,18 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import {
+  Box,
   Clock,
   Connection,
-  DataAnalysis, Location,
+  DataAnalysis,
   Key,
+  Location,
+  Operation,
   Search,
   Setting,
+  Share,
   Upload,
-  User
+  User,
 } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
@@ -184,6 +202,25 @@ const activeMenu = computed(() => route.path)
   color: var(--color-text-sidebar);
   transition: all var(--transition-base);
   position: relative;
+}
+
+.sidebar-menu :deep(.el-sub-menu__title) {
+  height: 42px;
+  line-height: 42px;
+  border-radius: var(--radius-md);
+  margin: 2px 0;
+  padding: 0 12px !important;
+  color: var(--color-text-sidebar);
+}
+
+.sidebar-menu :deep(.el-sub-menu__title:hover) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
+  min-width: 0;
+  padding-left: 38px !important;
 }
 
 .sidebar-menu .el-menu-item:hover {

@@ -50,6 +50,24 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '网络平面类型' },
       },
       {
+        path: 'switch-cabling/racks',
+        name: 'Racks',
+        component: () => import('@/views/Racks.vue'),
+        meta: { title: '机柜管理' },
+      },
+      {
+        path: 'switch-cabling/racks/create',
+        name: 'RackCreate',
+        component: () => import('@/views/RackBulkCreate.vue'),
+        meta: { title: '添加机柜' },
+      },
+      {
+        path: 'switch-cabling/switches',
+        name: 'Switches',
+        component: () => import('@/views/Switches.vue'),
+        meta: { title: '交换机管理' },
+      },
+      {
         path: 'lookup',
         name: 'Lookup',
         component: () => import('@/views/Lookup.vue'),

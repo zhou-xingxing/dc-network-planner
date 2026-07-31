@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, gen_uuid
 from app.utils.time_utils import utcnow_db
-
-
-def gen_uuid() -> str:
-    return str(uuid.uuid4())
 
 
 class ChangeLog(Base):

@@ -42,16 +42,16 @@
 graph TB
     subgraph Frontend["前端 (Vue 3 + TypeScript + Vite)"]
         direction TB
-        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 个人主页 · 用户管理 · 外部 API 访问令牌管理"]
+        FE_Pages["登录 · 仪表盘 · 区域管理 · 区域详情 · 网络平面类型管理 · IP 查找<br/>机柜管理 · 机柜批量创建 · 交换机管理 · 导入/导出 · 变更历史<br/>个人主页 · 用户管理 · 外部 API 访问令牌管理"]
         FE_Axios["Axios / REST API<br/>自动注入 Authorization: Bearer token"]
         FE_Pages --> FE_Axios
     end
 
     subgraph Backend["后端 (FastAPI)"]
         direction TB
-        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel · external-auth<br/>external-lookup · external-access-tokens · change-logs · stats · backup"]
+        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · racks · switches · switch-groups · switch-business-types<br/>lookup · excel · external-auth · external-lookup · external-access-tokens · change-logs · stats · backup"]
         Deps["Dependencies<br/>Web JWT 认证 · 外部 API Token 认证 · scope 校验 · 角色校验 · Region 授权校验"]
-        Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / excel / external_token / change_log / backup<br/>· 外部 API 访问令牌签发与管理员撤销<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
+        Services["Services（业务逻辑层）<br/>auth / user / region / plane_type / region_plane / rack / switch / switch_group<br/>switch_business_type / excel / external_token / change_log / backup<br/>· 外部 API 访问令牌签发与管理员撤销<br/>· 用户管理和权限序列化<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 机柜、交换机组、交换机与端口的约束校验和聚合统计<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
         Utils["Utils（工具函数）<br/>密码哈希与校验 · IP/CIDR 解析 · Excel 文件处理 · 时间转换"]
         Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / ExternalAccessToken / Region / NetworkPlaneType / RegionNetworkPlane /<br/>Rack / SwitchBusinessType / SwitchGroup / Switch / SwitchPort / CablingBatch / CableEntry /<br/>ChangeLog / BackupConfig / BackupRecord"]
         Routers --> Deps
@@ -84,7 +84,7 @@ graph TB
 - **api/** - Axios 请求封装模块，主要按业务领域拆分；`excel.ts` 当前同时承载 Excel、统计和变更日志接口，另包含外部 API 访问令牌的管理员管理接口调用，请求参数和响应数据使用 TypeScript 类型约束
 - **stores/** - Pinia 状态管理，存储登录 token、当前用户、Region 授权和侧边栏状态
 - **router/** - 路由配置，懒加载页面组件，并通过全局守卫保护登录态与管理员页面
-- **types/** - 前端业务类型定义，覆盖 Region、网络平面、用户、外部 API 访问令牌、备份、导入导出和统计响应
+- **types/** - 前端业务类型定义，覆盖 Region、网络平面、机柜、交换机、用户、外部 API 访问令牌、备份、导入导出和统计响应
 
 ### 3.3 项目结构
 
@@ -445,12 +445,15 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, RESTRICT, INDEX | 所属 Region |
-| name | String(100) | NOT NULL, UNIQUE | 全局唯一的机柜名称 |
+| name | String(100) | NOT NULL, UNIQUE, CHECK | 后端按结构化位置生成的全局唯一机柜名称 |
+| room_name | String(100) | NOT NULL, INDEX(region_id, room_name, rack_column, rack_number) | 机房名，如 `A1-403` |
+| rack_column | String(20) | NOT NULL, INDEX(region_id, room_name, rack_column, rack_number) | 机柜列，如 `A` |
+| rack_number | Integer | NOT NULL, > 0, INDEX(region_id, room_name, rack_column, rack_number) | 同一机房、同一机柜列内的编号 |
 | u_height | Integer | NOT NULL, > 0, ORM default=42 | 机柜总 U 数 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-机柜用于定位交换机上架位置和线缆的服务器侧物理位置。服务器不作为独立资产维护，其位置直接记录在线缆条目中。
+机柜同时用于定位交换机上架位置和 `CableEntry` 的服务器侧物理位置。`room_name`、`rack_column`、`rack_number` 是机柜位置的事实来源；机柜名称 `name` 由后端使用 `{room_name}-{rack_column}{rack_number 至少两位}` 规则生成。数据库同时使用 CHECK 约束 `name = room_name || '-' || rack_column || printf('%02d', rack_number)` 校验名称；其中 SQLite `printf('%02d', rack_number)` 会将不足两位的编号在左侧补零，例如将 `3` 格式化为 `03`。插入或更新的数据不满足该表达式时，SQLite 会拒绝写入，从而保证名称与结构化位置字段一致。全局名称唯一约束已经能够阻止重复结构化位置，因此四字段只保留普通复合索引，用于支持按 `(region_id, room_name, rack_column)` 聚合和按 `rack_number` 展开排序。
 
 **删除规则**：机柜内仍有交换机，或者仍被线缆条目用作服务器侧位置时，数据库会拒绝删除机柜，不会连带删除设备或线缆条目。
 
@@ -503,7 +506,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-交换机通过机柜确定所属 Region。当前 MVP 假定同一台交换机的所有端口使用相同规划速率，因此速率统一保存在 `port_speed_mbps`，界面负责将 1000、10000、25000 等整数显示为 1GE、10GE、25GE。`switch_group_id` 与 `member_role` 必须同时为空或同时非空。数据库能保证交换机至多属于一个组且组内角色不重复，但无法通过单行 CHECK 验证组成员数量。后续 Service 必须保证 `pair` 组恰好包含 a、b 两个成员，`single` 组恰好包含一个 single 成员，并校验机柜与交换机组属于同一 Region。允许交换机先以未分组状态录入资源台账；未完成成员配置的组不能用于布线规划。
+交换机通过机柜确定所属 Region。当前 MVP 假定同一台交换机的所有端口使用相同规划速率，因此速率统一保存在 `port_speed_mbps`，界面负责将 1000、10000、25000 等整数显示为 1GE、10GE、25GE。`switch_group_id` 与 `member_role` 必须同时为空或同时非空；数据库能保证交换机至多属于一个组且组内角色不重复。交换机组的 Region 一致性、成员完整性和就绪状态属于跨表业务规则，统一见 [6.11 交换机布线领域边界](#611-交换机布线领域边界)。
 
 #### switch_ports
 
@@ -513,11 +516,13 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | switch_id | String(36) | FK -> switches.id, CASCADE, INDEX | 所属交换机 |
-| port_number | Integer | NOT NULL, > 0, UNIQUE(switch_id, port_number) | 交换机内唯一的端口编号 |
+| card_number | Integer | NOT NULL, >= 0, ORM/DB default=1, UNIQUE(switch_id, card_number, subcard_number, port_number) | 板卡号 |
+| subcard_number | Integer | NOT NULL, >= 0, ORM/DB default=0, UNIQUE(switch_id, card_number, subcard_number, port_number) | 子板卡号；无独立子板卡时使用 0 |
+| port_number | Integer | NOT NULL, > 0, UNIQUE(switch_id, card_number, subcard_number, port_number) | 板卡和子板卡内的端口号 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-当前 MVP 使用统一的端口编号规则，端口显示名称由 `port_number` 推导，不单独保存名称。端口是否已有线缆通过是否存在引用该端口的 `CableEntry` 判断，不重复保存可分配或占用状态。
+端口物理位置由 `card_number/subcard_number/port_number` 三段坐标结构化保存，完整接口名称由交换机的 `port_speed_mbps` 和三段坐标动态生成，例如 `25000 + 1/0/1` 显示为 `25GE1/0/1`，不单独保存名称。端口是否已有线缆通过是否存在引用该端口的 `CableEntry` 判断，不重复保存可分配或占用状态。
 
 **删除规则**：删除交换机时，数据库会同时删除该交换机未被布线引用的端口。如果任一端口已被线缆条目引用，数据库会拒绝整个交换机删除操作，不会只删除部分端口，也不会连带删除线缆条目。删除单个交换机端口时同样遵守此规则。
 
@@ -691,6 +696,24 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型，支持维护父级类型；创建需 administrator |
 | GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型；更新和删除需 administrator；存在子类型或已被 Region 使用时拒绝删除 |
 
+#### 机柜与交换机
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/regions/{id}/racks` | 分页查询 Region 内机柜；支持名称搜索及按机房名、机柜列精确筛选，组内按机柜编号排序 |
+| GET | `/api/regions/{id}/racks/columns` | 按机房名和机柜列分页聚合机柜、交换机和服务器侧线缆数量，同时返回当前条件下的机柜列总数与机柜总数 |
+| POST | `/api/regions/{id}/racks` | 接收 1～500 个结构化机柜位置并由后端生成最终名称，所有机柜使用同一总 U 数；任一位置或名称冲突时整批回滚，需该 Region 业务写权限 |
+| PUT/DELETE | `/api/regions/{id}/racks/{rack_id}` | 更新或删除机柜；需该 Region 业务写权限；存在交换机或服务器侧线缆引用时拒绝删除 |
+| GET/POST | `/api/switch-business-types` | 查询或创建全局交换机业务类型；创建需 administrator |
+| PUT/DELETE | `/api/switch-business-types/{type_id}` | 更新或删除交换机业务类型；需 administrator；被交换机组引用时拒绝删除 |
+| GET/POST | `/api/regions/{id}/switch-groups` | 查询交换机组，或原子创建交换机组、完整成员及其连续端口；创建需该 Region 业务写权限，板卡/子板卡默认 1/0、端口范围默认 1～48 且一次最多 128 个，`pair` 必须同时提交端口速率一致的 `a`、`b`，`single` 必须提交唯一的 `single` 成员 |
+| PUT/DELETE | `/api/regions/{id}/switch-groups/{group_id}` | 更新或删除交换机组；需该 Region 业务写权限；存在成员交换机时拒绝删除 |
+| GET | `/api/regions/{id}/switches` | 查询 Region 内交换机；交换机不提供脱离交换机组的独立新增入口 |
+| PUT/DELETE | `/api/regions/{id}/switches/{switch_id}` | 更新或删除交换机；需该 Region 业务写权限；存在已占用端口时拒绝删除 |
+| GET | `/api/regions/{id}/switches/{switch_id}/ports` | 分页查询交换机端口及由线缆引用派生的占用状态，支持按板卡号、子板卡号筛选 |
+| POST | `/api/regions/{id}/switches/{switch_id}/ports/bulk` | 在指定板卡和子板卡上原子生成闭区间内的连续端口；板卡/子板卡默认 1/0，需该 Region 业务写权限，任一物理端口重复时整批拒绝 |
+| DELETE | `/api/regions/{id}/switches/{switch_id}/ports/{port_id}` | 删除空闲端口；需该 Region 业务写权限，端口已被线缆占用时拒绝 |
+
 #### 查询与导入导出
 
 | 方法 | 路径 | 说明 |
@@ -725,6 +748,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 - 变更历史、仪表盘最近变更：`created_at DESC`
 - 备份历史：`started_at DESC`
 - Region 列表、用户列表、网络平面类型列表：名称升序
+- 机柜列表：按机房名、机柜列、机柜编号升序；交换机、交换机组、交换机业务类型列表：名称升序；交换机端口按板卡号、子板卡号、端口号升序
 - Region 网络平面树、IP/CIDR 查询结果、Excel 导出：Region 名称、网络平面类型名称、`scope`、CIDR 升序
 - 统计分布：按展示名称升序；涉及私网/非私网分组时固定 `非私网` 在前、`私网` 在后；导入预览保持 Excel 原始行号顺序
 
@@ -1097,7 +1121,13 @@ flowchart TD
 
 交换机布线是独立的 Region 业务域，只复用 Region、用户权限、审计、事务和备份基础设施，不依赖 `NetworkPlaneType`、`RegionNetworkPlane`、CIDR、VLAN 或现有 Excel 导入模型。
 
-本模块只维护布线规划所需的交换机、端口及服务器侧物理端点，不维护服务器资产、线缆库存、实际施工、在线观测或对账状态。具体字段、约束和删除规则以[核心表设计](#42-核心表设计)中的对应表说明为准；后续 Service 应将数据库删除限制转换为可读的依赖关系错误。
+本模块只维护布线规划所需的交换机、端口及服务器侧物理端点，不维护服务器资产、线缆库存、实际施工、在线观测或对账状态。具体字段、约束和删除规则以[核心表设计](#42-核心表设计)中的对应表说明为准；API 端点以[机柜与交换机](#机柜与交换机)为准。
+
+以下决策涉及跨表、跨层的架构选择，不在各表独立说明中重复：
+
+1. **交换机新增入口**：新增交换机只通过交换机组组合接口（[POST `/api/regions/{id}/switch-groups`](#机柜与交换机)）完成，不提供脱离交换机组的独立新增入口。组合接口在同一事务内原子写入交换机组、成员交换机及每台成员的连续端口。这一决策让交换机从创建起就与组和端口形成完整关系，避免先创建空交换机再事后补端口的碎片化流程。
+2. **成员归属与配置完整性模型**：交换机通过上架机柜确定所属 Region，交换机组通过 `region_id` 明确归属；Service 在创建和更新成员时校验二者属于同一 Region。数据库只能保证 `switch_group_id` 与 `member_role` 同时为空或同时非空以及组内角色不重复，组成员数量、角色完整性和 A/B 速率一致性由 Service 校验。新增交换机必须通过组合接口作为组成员创建；创建后允许暂时解除分组，交换机组也可能因成员解除或删除而暂时缺少成员。接口通过 `is_member_config_ready` 标记成员配置完整性——只有 `pair` 组恰好包含端口速率一致的 a、b 两个成员，或 `single` 组恰好包含一个 single 成员时字段才为 `true`；该字段不表示端口存在、空闲或已经布线。配置未完整时 `readiness_issues` 返回稳定原因码和中文说明。创建 `pair` 组时必须一次提交速率一致的两台成员；后续允许依次调整速率，过渡期间 `is_member_config_ready` 暂时为 `false`，两端一致后自动恢复。
+3. **字符串输入与部分更新**：机柜结构化字段、业务类型 code/名称、交换机组名称、交换机名称及关联资源 ID 在 Schema 层统一去除首尾空白，并拒绝清理后的空字符串。部分更新请求必须至少包含一个字段；除交换机解除分组所需的 `switch_group_id` 和 `member_role` 外，不可为空的字段显式传入 `null` 时返回 422，不再作为未修改静默忽略。
 
 ## 7. 前端路由设计
 
@@ -1115,6 +1145,9 @@ flowchart TD
 | `/profile` | Profile.vue | 当前用户账号信息、角色和 Region 授权 |
 | `/users` | Users.vue | 用户、角色和 Region 授权管理（administrator） |
 | `/external-access-tokens` | ExternalAccessTokens.vue | 未撤销、未过期令牌列表（包括所属用户已停用的令牌）与手动撤销（administrator） |
+| `/switch-cabling/racks` | Racks.vue | 按 Region 汇总机柜列和机柜总数，以可折叠机柜列分页加载并管理具体机柜 |
+| `/switch-cabling/racks/create` | RackBulkCreate.vue | 按机房名、机柜列和编号范围生成结构化位置与名称预览，并通过统一入口原子创建一个或多个统一 U 数的机柜 |
+| `/switch-cabling/switches` | Switches.vue | 管理交换机、交换机组、交换机业务类型和交换机端口；组合新增时默认同时为每台成员生成 1～48 号空闲端口 |
 
 路由守卫规则：
 

@@ -38,7 +38,7 @@ def test_cabling_models_store_batch_and_endpoint_relationships(test_db) -> None:
 
         stored_entry = session.query(CableEntry).filter_by(id=entry.id).one()
         assert stored_entry.batch.name == "第一批布线"
-        assert stored_entry.server_rack.name == "A01"
+        assert stored_entry.server_rack.name == "ROOM-A01"
         assert stored_entry.server_start_u == 10
         assert stored_entry.server_height_u == 2
         assert stored_entry.server_port_name == "NIC1"
@@ -48,8 +48,10 @@ def test_cabling_models_store_batch_and_endpoint_relationships(test_db) -> None:
         assert stored_entry.switch_port.switch.switch_group is not None
         assert stored_entry.switch_port.switch.switch_group.business_type.code == "business"
         assert stored_entry.switch_port.switch.switch_group.business_type.name == "业务"
-        assert stored_entry.switch_port.switch.rack.name == "N01"
+        assert stored_entry.switch_port.switch.rack.name == "ROOM-N01"
         assert stored_entry.switch_port.switch.port_speed_mbps == 25000
+        assert stored_entry.switch_port.card_number == 1
+        assert stored_entry.switch_port.subcard_number == 0
     finally:
         session.close()
 
@@ -62,7 +64,14 @@ def test_switch_name_is_globally_unique(test_db) -> None:
         session.commit()
 
         second_region = Region(id="region-2", name="Region-B")
-        second_rack = Rack(id="rack-switch-2", region_id=second_region.id, name="N02")
+        second_rack = Rack(
+            id="rack-switch-2",
+            region_id=second_region.id,
+            name="ROOM-N02",
+            room_name="ROOM",
+            rack_column="N",
+            rack_number=2,
+        )
         session.add_all([second_region, second_rack])
         session.flush()
         session.add(
@@ -74,6 +83,28 @@ def test_switch_name_is_globally_unique(test_db) -> None:
                 start_u=1,
             )
         )
+
+        with pytest.raises(IntegrityError):
+            session.commit()
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_rack_name_must_match_structured_position(test_db) -> None:
+    """机柜名称必须与机房、机柜列和编号组合完全一致。"""
+    session = Session(test_db)
+    try:
+        region = Region(id="rack-constraint-region", name="Rack Constraint Region")
+        rack = Rack(
+            id="rack-inconsistent",
+            region_id=region.id,
+            name="ROOM-A01",
+            room_name="ROOM",
+            rack_column="B",
+            rack_number=2,
+        )
+        session.add_all([region, rack])
 
         with pytest.raises(IntegrityError):
             session.commit()
@@ -127,15 +158,28 @@ def test_switch_port_speed_mbps_must_be_positive(test_db) -> None:
         session.close()
 
 
-def test_switch_port_number_is_unique_within_switch(test_db) -> None:
-    """同一交换机内不能重复配置端口编号。"""
+def test_switch_port_position_is_unique_within_switch(test_db) -> None:
+    """同一交换机允许跨板卡复用端口号，但完整物理位置不能重复。"""
     session = Session(test_db)
     try:
         topology = _create_topology(session)
         session.add(
             SwitchPort(
+                id="switch-port-other-card",
+                switch_id=topology.switch.id,
+                card_number=2,
+                subcard_number=0,
+                port_number=1,
+            )
+        )
+        session.commit()
+
+        session.add(
+            SwitchPort(
                 id="switch-port-duplicate",
                 switch_id=topology.switch.id,
+                card_number=2,
+                subcard_number=0,
                 port_number=1,
             )
         )
@@ -429,8 +473,22 @@ class _Topology:
 def _create_topology(session: Session) -> _Topology:
     """创建服务器侧机柜、业务交换机及交换机端口。"""
     region = Region(id="region-1", name="Region-A")
-    server_rack = Rack(id="rack-server", region_id=region.id, name="A01")
-    switch_rack = Rack(id="rack-switch", region_id=region.id, name="N01")
+    server_rack = Rack(
+        id="rack-server",
+        region_id=region.id,
+        name="ROOM-A01",
+        room_name="ROOM",
+        rack_column="A",
+        rack_number=1,
+    )
+    switch_rack = Rack(
+        id="rack-switch",
+        region_id=region.id,
+        name="ROOM-N01",
+        room_name="ROOM",
+        rack_column="N",
+        rack_number=1,
+    )
     business_type = SwitchBusinessType(id="business-type-1", code="business", name="业务")
     switch_group = SwitchGroup(
         id="switch-group-1",

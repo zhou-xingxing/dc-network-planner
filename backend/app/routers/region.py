@@ -117,6 +117,9 @@ def delete_region_endpoint(
     current_user: User = Depends(require_administrator),
 ) -> None:
     """删除 Region。"""
-    deleted = delete_region(db, region_id, operator_name(current_user))
+    try:
+        deleted = delete_region(db, region_id, operator_name(current_user))
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     if not deleted:
         raise HTTPException(status_code=404, detail="Region 不存在")

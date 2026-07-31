@@ -7,8 +7,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.exceptions import BusinessError
+from app.models.cabling import CablingBatch
+from app.models.rack import Rack
 from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
+from app.models.switch import SwitchGroup
 from app.models.user import UserRegionPermission
 from app.schemas.region import RegionCreate, RegionUpdate
 from app.services.change_log import log_change
@@ -202,10 +205,24 @@ def delete_region(db: Session, region_id: str, operator: str) -> bool:
 
     Returns:
         删除成功返回 True，不存在时返回 False。
+
+    Raises:
+        BusinessError: Region 仍有机柜、交换机组或布线批次。
     """
     region = get_region(db, region_id)
     if not region:
         return False
+    rack_count = db.query(func.count(Rack.id)).filter(Rack.region_id == region_id).scalar() or 0
+    if rack_count:
+        raise BusinessError(f"Region {region.name} 仍有 {rack_count} 个机柜，不能删除")
+    switch_group_count = db.query(func.count(SwitchGroup.id)).filter(SwitchGroup.region_id == region_id).scalar() or 0
+    if switch_group_count:
+        raise BusinessError(f"Region {region.name} 仍有 {switch_group_count} 个交换机组，不能删除")
+    cabling_batch_count = (
+        db.query(func.count(CablingBatch.id)).filter(CablingBatch.region_id == region_id).scalar() or 0
+    )
+    if cabling_batch_count:
+        raise BusinessError(f"Region {region.name} 仍有 {cabling_batch_count} 个布线批次，不能删除")
     plane_count = count_region_planes(db, region_id)
     permission_count = count_region_permissions(db, region_id)
     old_value = f"name={region.name}, region_planes={plane_count}, user_region_permissions={permission_count}"

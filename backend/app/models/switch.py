@@ -1,23 +1,18 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, gen_uuid
 from app.utils.time_utils import utcnow_db
 
 if TYPE_CHECKING:
     from app.models.cabling import CableEntry
     from app.models.rack import Rack
     from app.models.region import Region
-
-
-def gen_uuid() -> str:
-    return str(uuid.uuid4())
 
 
 class SwitchBusinessType(Base):
@@ -114,7 +109,15 @@ class SwitchPort(Base):
 
     __tablename__ = "switch_ports"
     __table_args__ = (
-        UniqueConstraint("switch_id", "port_number", name="uq_switch_port_number"),
+        UniqueConstraint(
+            "switch_id",
+            "card_number",
+            "subcard_number",
+            "port_number",
+            name="uq_switch_port_position",
+        ),
+        CheckConstraint("card_number >= 0", name="ck_switch_port_card_number_nonnegative"),
+        CheckConstraint("subcard_number >= 0", name="ck_switch_port_subcard_number_nonnegative"),
         CheckConstraint("port_number > 0", name="ck_switch_port_number_positive"),
     )
 
@@ -122,6 +125,8 @@ class SwitchPort(Base):
     switch_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("switches.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    card_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    subcard_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     port_number: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_db)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)

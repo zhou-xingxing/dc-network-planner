@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 from sqlite3 import Connection as SQLiteConnection
@@ -7,6 +8,10 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_DIR, settings
+
+
+def gen_uuid() -> str:
+    return str(uuid.uuid4())
 
 
 def _normalize_database_url(database_url: str) -> str:

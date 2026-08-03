@@ -1,4 +1,5 @@
 export type * from "./backup"
+export type * from "./cabling"
 export type * from "./changeLog"
 export type * from "./common"
 export type * from "./excel"

@@ -1,21 +1,37 @@
 <template>
   <div class="app-layout">
-    <aside class="sidebar" :class="{ 'is-collapsed': appStore.sidebarCollapsed }">
-      <SideMenu />
+    <aside
+      id="primary-navigation"
+      class="sidebar"
+      :class="{ 'is-collapsed': sidebarCollapsed }"
+      :aria-hidden="isNarrowViewport && sidebarCollapsed"
+      :inert="isNarrowViewport && sidebarCollapsed ? true : undefined"
+    >
+      <SideMenu :collapsed="sidebarCollapsed" />
     </aside>
+    <button
+      v-if="isNarrowViewport && !sidebarCollapsed"
+      class="sidebar-backdrop"
+      type="button"
+      aria-label="关闭导航菜单"
+      @click="closeMobileSidebar"
+    ></button>
     <div class="main-container">
       <header class="app-header">
         <div class="header-left">
-          <el-icon
+          <button
             class="menu-fold"
-            role="button"
-            tabindex="0"
-            @click="appStore.toggleSidebar"
-            @keydown="handleToggleKeydown"
+            type="button"
+            :aria-label="sidebarCollapsed ? '展开导航菜单' : '收起导航菜单'"
+            aria-controls="primary-navigation"
+            :aria-expanded="!sidebarCollapsed"
+            @click="toggleSidebar"
           >
-            <Fold v-if="!appStore.sidebarCollapsed" />
-            <Expand v-else />
-          </el-icon>
+            <el-icon>
+              <Fold v-if="!sidebarCollapsed" />
+              <Expand v-else />
+            </el-icon>
+          </button>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
             <el-breadcrumb-item v-if="route.meta.title">{{ route.meta.title }}</el-breadcrumb-item>
@@ -39,25 +55,61 @@
 </template>
 
 <script setup lang="ts">
+import { UserFilled, Fold, Expand } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import { UserFilled, Fold, Expand } from '@element-plus/icons-vue'
 import SideMenu from './SideMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const isNarrowViewport = ref(false)
+const mobileSidebarOpen = ref(false)
+const sidebarCollapsed = computed(() =>
+  isNarrowViewport.value ? !mobileSidebarOpen.value : appStore.sidebarCollapsed
+)
+let narrowViewportQuery: MediaQueryList | null = null
 
 function handleLogout() {
   appStore.logout()
   router.push('/login')
 }
 
-function handleToggleKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Enter' && event.key !== ' ') return
-  event.preventDefault()
+function toggleSidebar() {
+  if (isNarrowViewport.value) {
+    mobileSidebarOpen.value = !mobileSidebarOpen.value
+    return
+  }
   appStore.toggleSidebar()
 }
+
+function closeMobileSidebar() {
+  mobileSidebarOpen.value = false
+}
+
+function syncNarrowViewport(event: MediaQueryListEvent | MediaQueryList) {
+  isNarrowViewport.value = event.matches
+  if (!event.matches) mobileSidebarOpen.value = false
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && mobileSidebarOpen.value) closeMobileSidebar()
+}
+
+watch(() => route.path, closeMobileSidebar)
+
+onMounted(() => {
+  narrowViewportQuery = window.matchMedia('(max-width: 760px)')
+  syncNarrowViewport(narrowViewportQuery)
+  narrowViewportQuery.addEventListener('change', syncNarrowViewport)
+  window.addEventListener('keydown', handleWindowKeydown)
+})
+
+onBeforeUnmount(() => {
+  narrowViewportQuery?.removeEventListener('change', syncNarrowViewport)
+  window.removeEventListener('keydown', handleWindowKeydown)
+})
 </script>
 
 <style scoped>
@@ -109,16 +161,26 @@ function handleToggleKeydown(event: KeyboardEvent) {
 }
 
 .menu-fold {
-  font-size: 18px;
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
+  font-size: 18px;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 .menu-fold:hover {
   color: var(--color-primary);
   background: var(--color-primary-lighter);
+}
+.menu-fold:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .header-right {
@@ -168,5 +230,46 @@ function handleToggleKeydown(event: KeyboardEvent) {
   padding: var(--spacing-lg);
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: var(--sidebar-width);
+    box-shadow: 12px 0 32px rgba(15, 23, 42, 0.24);
+    transform: translateX(0);
+    transition: transform var(--transition-base);
+  }
+
+  .sidebar.is-collapsed {
+    width: var(--sidebar-width);
+    transform: translateX(-100%);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    z-index: 9;
+    display: block;
+    inset: 0;
+    border: none;
+    background: rgba(15, 23, 42, 0.38);
+  }
+
+  .app-header {
+    padding-inline: 12px;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+
+  .operator-area {
+    padding-inline: 8px;
+  }
 }
 </style>

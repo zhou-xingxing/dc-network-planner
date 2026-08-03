@@ -553,7 +553,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | server_rack_id | String(36) | FK -> racks.id, RESTRICT, INDEX | 服务器侧所在机柜 |
 | server_start_u | Integer | NOT NULL, > 0 | 服务器侧设备的起始 U 位 |
 | server_height_u | Integer | NOT NULL, > 0, ORM default=1 | 服务器侧设备占用的 U 数 |
-| server_port_name | String(100) | NOT NULL | 服务器侧端口标识，如 NIC1、iDRAC |
+| server_port_name | String(100) | NOT NULL | 服务器侧端口标识，如 `nic1`、`idrac` |
 | switch_port_id | String(36) | FK -> switch_ports.id, RESTRICT, INDEX | 交换机端口 |
 | cable_label | String(100) | NOT NULL, UNIQUE | 全局唯一的线签 |
 | cable_sequence | Integer | NOT NULL, > 0 | 同一交换机连接到同一服务器侧机柜的线序号 |
@@ -562,6 +562,8 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
 表级唯一约束分别覆盖 `(server_rack_id, server_start_u, server_port_name)`、`switch_port_id` 和 `cable_label`，保证同一机柜起始 U 位上的同名服务器端口、交换机物理端口或线签只能对应一根线。`server_height_u` 不参与端点唯一约束，避免通过误填不同高度绕过端口占用校验。服务器侧显示位置由 `server_start_u + server_height_u - 1` 派生，例如起始 U 位为 1、高度为 2 时显示为 `01U-02U`。
+
+服务器端口名在布线规划输入时先去除首尾空格，再按 `^[a-z0-9]+(?:-[a-z0-9]+)*$` 校验：只允许小写字母、数字和用于分隔非空片段的单个中划线，不自动转换大小写。当前输入页使用该规则提前反馈；后续预览和确认接口仍必须在 Schema / Service 层重新校验，不信任前端结果。
 
 `cable_sequence` 表示某台交换机连接到某个服务器侧机柜的第几根线，跨布线批次保持同一编号空间。交换机由 `switch_port_id` 关联推导，因此 `CableEntry` 不重复保存 `switch_id`，数据库也不对该跨表组合建立唯一约束；后续 Service 创建或修改条目时，必须保证同一交换机、同一服务器侧机柜内的 `cable_sequence` 唯一，并可按现有最大序号自动分配下一个值。
 
@@ -702,6 +704,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|
 | GET | `/api/regions/{id}/racks` | 分页查询 Region 内机柜；支持名称搜索及按机房名、机柜列精确筛选，组内按机柜编号排序 |
 | GET | `/api/regions/{id}/racks/columns` | 按机房名和机柜列分页聚合机柜、交换机和服务器侧线缆数量，同时返回当前条件下的机柜列总数与机柜总数 |
+| GET | `/api/regions/{id}/racks/{rack_id}/occupancy` | 查询机柜总 U 数、交换机上架位置以及由线缆条目按起始 U 位聚合的隐式服务器位置和已有端口名，用于布线规划输入阶段的即时校验 |
 | POST | `/api/regions/{id}/racks` | 接收 1～500 个结构化机柜位置并由后端生成最终名称，所有机柜使用同一总 U 数；任一位置或名称冲突时整批回滚，需该 Region 业务写权限 |
 | PUT/DELETE | `/api/regions/{id}/racks/{rack_id}` | 更新或删除机柜；需该 Region 业务写权限；存在交换机或服务器侧线缆引用时拒绝删除 |
 | GET/POST | `/api/switch-business-types` | 查询或创建全局交换机业务类型；创建需 administrator |
@@ -1117,7 +1120,7 @@ flowchart TD
 
 **审计策略**：变更日志仍由 Service 层显式写入，但 `operator` 由 Router 层从当前登录用户解析得到，前端不再传递操作者字段。
 
-### 6.11 交换机布线领域边界
+### 6.11 交换机布线相关设计
 
 交换机布线是独立的 Region 业务域，只复用 Region、用户权限、审计、事务和备份基础设施，不依赖 `NetworkPlaneType`、`RegionNetworkPlane`、CIDR、VLAN 或现有 Excel 导入模型。
 
@@ -1128,6 +1131,9 @@ flowchart TD
 1. **交换机新增入口**：新增交换机只通过交换机组组合接口（[POST `/api/regions/{id}/switch-groups`](#机柜与交换机)）完成，不提供脱离交换机组的独立新增入口。组合接口在同一事务内原子写入交换机组、成员交换机及每台成员的连续端口。这一决策让交换机从创建起就与组和端口形成完整关系，避免先创建空交换机再事后补端口的碎片化流程。
 2. **成员归属与配置完整性模型**：交换机通过上架机柜确定所属 Region，交换机组通过 `region_id` 明确归属；Service 在创建和更新成员时校验二者属于同一 Region。数据库只能保证 `switch_group_id` 与 `member_role` 同时为空或同时非空以及组内角色不重复，组成员数量、角色完整性和 A/B 速率一致性由 Service 校验。新增交换机必须通过组合接口作为组成员创建；创建后允许暂时解除分组，交换机组也可能因成员解除或删除而暂时缺少成员。接口通过 `is_member_config_ready` 标记成员配置完整性——只有 `pair` 组恰好包含端口速率一致的 a、b 两个成员，或 `single` 组恰好包含一个 single 成员时字段才为 `true`；该字段不表示端口存在、空闲或已经布线。配置未完整时 `readiness_issues` 返回稳定原因码和中文说明。创建 `pair` 组时必须一次提交速率一致的两台成员；后续允许依次调整速率，过渡期间 `is_member_config_ready` 暂时为 `false`，两端一致后自动恢复。
 3. **字符串输入与部分更新**：机柜结构化字段、业务类型 code/名称、交换机组名称、交换机名称及关联资源 ID 在 Schema 层统一去除首尾空白，并拒绝清理后的空字符串。部分更新请求必须至少包含一个字段；除交换机解除分组所需的 `switch_group_id` 和 `member_role` 外，不可为空的字段显式传入 `null` 时返回 422，不再作为未修改静默忽略。
+4. **布线需求输入模型**：一次规划可包含多台服务器，服务器以“机柜 + 起始 U 位 + 设备高度”描述当次需求，并可包含多个目标交换机组。每个目标组的线缆明细列表是连线根数的事实来源；`single` 组允许任意正整数根并全部指向唯一成员，`pair` 组只允许正偶数根并在 A/B 成员间平均分配。同一服务器的端口名在所有目标组之间保持唯一。数值输入通过显式更新保持页面显示与表单状态一致；减少连线根数会删除已填写的尾部端口时，页面保留原值并等待用户确认，取消操作不得丢失端口内容。检查结果按具体错误字段计数，同一文案出现在不同字段时分别计入；检查失败后，页面将首个错误与输入控件建立可访问性关联并定位焦点。
+5. **输入阶段机柜占用校验**：前端选择机柜后读取占用快照，对机柜边界、当前输入内的服务器位置、已有交换机位置和由 `CableEntry` 推导的已有服务器位置进行即时校验。对同一机柜和起始 U 位，高度一致时视为同一隐式服务器，允许用未占用的端口名增加线缆；高度不一致或与其他位置范围重叠时拒绝。占用快照只用于提前反馈，不代表资源预留；后续预览与确认服务必须在当前事务中重新强校验。
+6. 支持在布线需求输入页面中复制服务器。复制生成的新服务器统一追加到列表末尾，并自动将起始 U 位设为当前页面最大占用位置之后。
 
 ## 7. 前端路由设计
 
@@ -1148,6 +1154,7 @@ flowchart TD
 | `/switch-cabling/racks` | Racks.vue | 按 Region 汇总机柜列和机柜总数，以可折叠机柜列分页加载并管理具体机柜 |
 | `/switch-cabling/racks/create` | RackBulkCreate.vue | 按机房名、机柜列和编号范围生成结构化位置与名称预览，并通过统一入口原子创建一个或多个统一 U 数的机柜 |
 | `/switch-cabling/switches` | Switches.vue | 管理交换机、交换机组、交换机业务类型和交换机端口；组合新增时默认同时为每台成员生成 1～48 号空闲端口 |
+| `/switch-cabling/planning` | CablingPlanning.vue | 录入多服务器、多目标交换机组的布线需求，读取机柜占用快照完成位置与服务器端口即时校验；当前阶段不分配交换机端口且不落库 |
 
 路由守卫规则：
 

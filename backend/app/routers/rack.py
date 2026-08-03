@@ -10,14 +10,19 @@ from app.schemas.rack import (
     RackColumnListResponse,
     RackColumnSummary,
     RackCreate,
+    RackOccupancyResponse,
     RackResponse,
+    RackServerPositionResponse,
+    RackSwitchPositionResponse,
     RackUpdate,
 )
 from app.services.rack import (
     RackColumnWithCounts,
+    RackOccupancy,
     RackWithCounts,
     create_racks,
     delete_rack,
+    get_rack_occupancy,
     list_rack_columns,
     list_racks,
     update_rack,
@@ -107,6 +112,22 @@ def list_rack_columns_endpoint(
     )
 
 
+@router.get("/{rack_id}/occupancy", response_model=RackOccupancyResponse)
+def get_rack_occupancy_endpoint(
+    region_id: str,
+    rack_id: str,
+    db: Session = Depends(get_db),
+) -> RackOccupancyResponse:
+    """查询机柜内交换机和服务器侧 U 位占用。"""
+    try:
+        occupancy = get_rack_occupancy(db, region_id, rack_id)
+    except BusinessError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not occupancy:
+        raise HTTPException(status_code=404, detail="机柜不存在")
+    return _rack_occupancy_response(occupancy)
+
+
 @router.put("/{rack_id}", response_model=RackResponse)
 def update_rack_endpoint(
     region_id: str,
@@ -168,4 +189,31 @@ def _rack_column_response(item: RackColumnWithCounts) -> RackColumnSummary:
         rack_count=item.rack_count,
         switch_count=item.switch_count,
         cable_count=item.cable_count,
+    )
+
+
+def _rack_occupancy_response(occupancy: RackOccupancy) -> RackOccupancyResponse:
+    """将 Service 机柜占用快照转换为 API 响应。"""
+    return RackOccupancyResponse(
+        rack_id=occupancy.rack.id,
+        rack_name=occupancy.rack.name,
+        u_height=occupancy.rack.u_height,
+        switch_positions=[
+            RackSwitchPositionResponse(
+                switch_id=switch.id,
+                switch_name=switch.name,
+                start_u=switch.start_u,
+                height_u=switch.height_u,
+            )
+            for switch in occupancy.switches
+        ],
+        server_positions=[
+            RackServerPositionResponse(
+                start_u=position.start_u,
+                height_u=position.height_u,
+                server_port_names=list(position.server_port_names),
+                cable_count=position.cable_count,
+            )
+            for position in occupancy.server_positions
+        ],
     )

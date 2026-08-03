@@ -133,6 +133,201 @@ def test_rack_write_requires_assigned_region_user(client, admin_headers, user_he
     assert readable.status_code == 200
 
 
+def test_rack_occupancy_aggregates_switches_and_implicit_server_positions(
+    client, admin_headers, user_headers_factory, test_db
+) -> None:
+    """机柜占用接口应返回有序的交换机和按起始 U 位聚合的服务器侧位置。"""
+    region = _create_region(client, admin_headers)
+    region_id = str(region["id"])
+    user_headers = user_headers_factory([region_id], username="rack-occupancy-reader")
+    rack = _create_rack(client, user_headers, region_id, room_name="MIXED")
+
+    empty = client.get(
+        f"/api/regions/{region_id}/racks/{rack['id']}/occupancy",
+        headers=user_headers,
+    )
+    assert empty.status_code == 200
+    assert empty.json() == {
+        "rack_id": rack["id"],
+        "rack_name": rack["name"],
+        "u_height": 42,
+        "switch_positions": [],
+        "server_positions": [],
+    }
+
+    session = Session(test_db)
+    try:
+        switch_b = Switch(
+            rack_id=str(rack["id"]),
+            name="switch-b",
+            port_speed_mbps=25000,
+            start_u=42,
+        )
+        switch_a = Switch(
+            rack_id=str(rack["id"]),
+            name="switch-a",
+            port_speed_mbps=25000,
+            start_u=40,
+            height_u=2,
+        )
+        ports = [SwitchPort(switch=switch_a, port_number=number) for number in range(1, 4)]
+        batch = CablingBatch(region_id=region_id, name="第一批布线", created_by="rack-occupancy-reader")
+        session.add_all(
+            [
+                switch_b,
+                CableEntry(
+                    batch=batch,
+                    server_rack_id=str(rack["id"]),
+                    server_start_u=10,
+                    server_height_u=2,
+                    server_port_name="eth1",
+                    switch_port=ports[0],
+                    cable_label="cable-1",
+                    cable_sequence=1,
+                ),
+                CableEntry(
+                    batch=batch,
+                    server_rack_id=str(rack["id"]),
+                    server_start_u=10,
+                    server_height_u=2,
+                    server_port_name="eth0",
+                    switch_port=ports[1],
+                    cable_label="cable-2",
+                    cable_sequence=2,
+                ),
+                CableEntry(
+                    batch=batch,
+                    server_rack_id=str(rack["id"]),
+                    server_start_u=20,
+                    server_height_u=1,
+                    server_port_name="idrac",
+                    switch_port=ports[2],
+                    cable_label="cable-3",
+                    cable_sequence=3,
+                ),
+            ]
+        )
+        session.commit()
+        switch_a_id = switch_a.id
+        switch_b_id = switch_b.id
+    finally:
+        session.close()
+
+    response = client.get(
+        f"/api/regions/{region_id}/racks/{rack['id']}/occupancy",
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["switch_positions"] == [
+        {
+            "switch_id": switch_a_id,
+            "switch_name": "switch-a",
+            "start_u": 40,
+            "height_u": 2,
+        },
+        {
+            "switch_id": switch_b_id,
+            "switch_name": "switch-b",
+            "start_u": 42,
+            "height_u": 1,
+        },
+    ]
+    assert response.json()["server_positions"] == [
+        {
+            "start_u": 10,
+            "height_u": 2,
+            "server_port_names": ["eth0", "eth1"],
+            "cable_count": 2,
+        },
+        {
+            "start_u": 20,
+            "height_u": 1,
+            "server_port_names": ["idrac"],
+            "cable_count": 1,
+        },
+    ]
+
+
+def test_rack_occupancy_rejects_inconsistent_server_heights(
+    client, admin_headers, user_headers_factory, test_db
+) -> None:
+    """同一隐式服务器位置的已有线缆高度不一致时应拒绝返回占用快照。"""
+    region = _create_region(client, admin_headers)
+    region_id = str(region["id"])
+    user_headers = user_headers_factory([region_id], username="rack-occupancy-conflict")
+    server_rack = _create_rack(client, user_headers, region_id, room_name="SERVER")
+    switch_rack = _create_rack(client, user_headers, region_id, room_name="NETWORK")
+
+    session = Session(test_db)
+    try:
+        switch = Switch(
+            rack_id=str(switch_rack["id"]),
+            name="switch-a",
+            port_speed_mbps=25000,
+            start_u=42,
+        )
+        ports = [SwitchPort(switch=switch, port_number=number) for number in (1, 2)]
+        batch = CablingBatch(region_id=region_id, name="第一批布线", created_by="rack-occupancy-conflict")
+        session.add_all(
+            [
+                CableEntry(
+                    batch=batch,
+                    server_rack_id=str(server_rack["id"]),
+                    server_start_u=10,
+                    server_height_u=1,
+                    server_port_name="eth0",
+                    switch_port=ports[0],
+                    cable_label="cable-1",
+                    cable_sequence=1,
+                ),
+                CableEntry(
+                    batch=batch,
+                    server_rack_id=str(server_rack["id"]),
+                    server_start_u=10,
+                    server_height_u=2,
+                    server_port_name="eth1",
+                    switch_port=ports[1],
+                    cable_label="cable-2",
+                    cable_sequence=2,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.get(
+        f"/api/regions/{region_id}/racks/{server_rack['id']}/occupancy",
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "机柜 SERVER-A01 的服务器侧位置 10U 存在不一致的设备高度: 1U、2U"
+
+
+def test_rack_occupancy_requires_authentication_and_matching_region(
+    client, admin_headers, user_headers_factory
+) -> None:
+    """机柜占用接口需要登录，且不得通过其他 Region 路径访问机柜。"""
+    region_a = _create_region(client, admin_headers, "Region-A")
+    region_b = _create_region(client, admin_headers, "Region-B")
+    region_a_id = str(region_a["id"])
+    region_b_id = str(region_b["id"])
+    user_headers = user_headers_factory([region_a_id], username="rack-occupancy-auth")
+    rack = _create_rack(client, user_headers, region_a_id)
+
+    unauthenticated = client.get(f"/api/regions/{region_a_id}/racks/{rack['id']}/occupancy")
+    wrong_region = client.get(
+        f"/api/regions/{region_b_id}/racks/{rack['id']}/occupancy",
+        headers=user_headers,
+    )
+
+    assert unauthenticated.status_code == 401
+    assert wrong_region.status_code == 404
+    assert wrong_region.json()["detail"] == "机柜不存在"
+
+
 def test_rack_rejects_invalid_height_and_duplicate_global_name(client, admin_headers, user_headers_factory) -> None:
     """机柜总 U 数必须为正整数，名称在不同 Region 间也不能重复。"""
     region_a = _create_region(client, admin_headers, "Region-A")

@@ -6,6 +6,7 @@ import type {
   RackColumnListResponse,
   RackCreatePayload,
   RackListQuery,
+  RackOccupancy,
   RackUpdatePayload,
 } from '@/types'
 
@@ -21,6 +22,10 @@ export function fetchRackColumns(
     `/regions/${regionId}/racks/columns`,
     { params }
   )
+}
+
+export function fetchRackOccupancy(regionId: EntityId, rackId: EntityId): Promise<RackOccupancy> {
+  return request.get<RackOccupancy, RackOccupancy>(`/regions/${regionId}/racks/${rackId}/occupancy`)
 }
 
 export function createRacks(regionId: EntityId, data: RackCreatePayload): Promise<Rack[]> {

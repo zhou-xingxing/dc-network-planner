@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar-wrapper" :class="{ 'is-collapsed': appStore.sidebarCollapsed }">
+  <div class="sidebar-wrapper" :class="{ 'is-collapsed': collapsed }">
     <div class="sidebar-header">
       <div class="logo-icon">
         <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
@@ -20,7 +20,7 @@
     <el-menu
       :default-active="activeMenu"
       router
-      :collapse="appStore.sidebarCollapsed"
+      :collapse="collapsed"
       background-color="transparent"
       text-color="var(--color-text-sidebar)"
       active-text-color="var(--color-text-sidebar-active)"
@@ -50,6 +50,10 @@
         <el-menu-item index="/switch-cabling/switches">
           <el-icon><Operation /></el-icon>
           <span>交换机管理</span>
+        </el-menu-item>
+        <el-menu-item index="/switch-cabling/planning">
+          <el-icon><Tickets /></el-icon>
+          <span>布线规划</span>
         </el-menu-item>
       </el-sub-menu>
       <el-menu-item index="/lookup">
@@ -97,11 +101,16 @@ import {
   Search,
   Setting,
   Share,
+  Tickets,
   Upload,
   User,
 } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+
+defineProps<{
+  collapsed: boolean
+}>()
 
 const route = useRoute()
 const appStore = useAppStore()

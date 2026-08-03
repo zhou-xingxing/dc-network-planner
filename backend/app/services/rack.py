@@ -35,6 +35,25 @@ class RackColumnWithCounts:
     cable_count: int
 
 
+@dataclass(frozen=True)
+class RackServerPosition:
+    """同一起始 U 位下由线缆条目聚合的隐式服务器位置。"""
+
+    start_u: int
+    height_u: int
+    server_port_names: tuple[str, ...]
+    cable_count: int
+
+
+@dataclass(frozen=True)
+class RackOccupancy:
+    """机柜内交换机与服务器侧位置占用快照。"""
+
+    rack: Rack
+    switches: tuple[Switch, ...]
+    server_positions: tuple[RackServerPosition, ...]
+
+
 def list_racks(
     db: Session,
     region_id: str,
@@ -185,6 +204,67 @@ def get_rack(db: Session, region_id: str, rack_id: str) -> Rack | None:
         机柜；不存在或不属于指定 Region 时返回 None。
     """
     return db.query(Rack).filter(Rack.id == rack_id, Rack.region_id == region_id).first()
+
+
+def get_rack_occupancy(db: Session, region_id: str, rack_id: str) -> RackOccupancy | None:
+    """获取机柜内交换机和由线缆推导的服务器侧占用。
+
+    同一机柜、同一起始 U 位视为同一隐式服务器位置。
+    如果该位置的已有线缆记录使用不同设备高度，则拒绝
+    返回自相矛盾的占用快照。
+
+    Args:
+        db: 数据库会话。
+        region_id: Region ID。
+        rack_id: 机柜 ID。
+
+    Returns:
+        机柜占用快照；机柜不存在或不属于指定 Region 时返回 None。
+
+    Raises:
+        BusinessError: 同一隐式服务器位置存在不一致的设备高度。
+    """
+    rack = get_rack(db, region_id, rack_id)
+    if not rack:
+        return None
+
+    switches = tuple(
+        db.query(Switch).filter(Switch.rack_id == rack.id).order_by(Switch.start_u.asc(), Switch.name.asc()).all()
+    )
+    rows = (
+        db.query(
+            CableEntry.server_start_u,
+            CableEntry.server_height_u,
+            CableEntry.server_port_name,
+        )
+        .filter(CableEntry.server_rack_id == rack.id)
+        .order_by(CableEntry.server_start_u.asc(), CableEntry.server_port_name.asc())
+        .all()
+    )
+
+    grouped: dict[int, tuple[int, list[str]]] = {}
+    for start_u, height_u, port_name in rows:
+        current = grouped.get(start_u)
+        if current is None:
+            grouped[start_u] = (height_u, [port_name])
+            continue
+        current_height, port_names = current
+        if current_height != height_u:
+            raise BusinessError(
+                f"机柜 {rack.name} 的服务器侧位置 {start_u}U " f"存在不一致的设备高度: {current_height}U、{height_u}U"
+            )
+        port_names.append(port_name)
+
+    server_positions = tuple(
+        RackServerPosition(
+            start_u=start_u,
+            height_u=height_u,
+            server_port_names=tuple(port_names),
+            cable_count=len(port_names),
+        )
+        for start_u, (height_u, port_names) in grouped.items()
+    )
+    return RackOccupancy(rack=rack, switches=switches, server_positions=server_positions)
 
 
 def create_racks(

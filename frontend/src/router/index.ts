@@ -68,6 +68,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '交换机管理' },
       },
       {
+        path: 'switch-cabling/planning',
+        name: 'CablingPlanning',
+        component: () => import('@/views/CablingPlanning.vue'),
+        meta: { title: '布线规划' },
+      },
+      {
         path: 'lookup',
         name: 'Lookup',
         component: () => import('@/views/Lookup.vue'),

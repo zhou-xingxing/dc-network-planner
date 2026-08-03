@@ -50,6 +50,34 @@ class RackColumnListResponse(BaseModel):
     limit: int
 
 
+class RackSwitchPositionResponse(BaseModel):
+    """机柜内交换机的 U 位占用信息。"""
+
+    switch_id: str
+    switch_name: str
+    start_u: int
+    height_u: int
+
+
+class RackServerPositionResponse(BaseModel):
+    """由线缆条目推导的服务器侧 U 位占用信息。"""
+
+    start_u: int
+    height_u: int
+    server_port_names: list[str]
+    cable_count: int
+
+
+class RackOccupancyResponse(BaseModel):
+    """布线规划输入页使用的机柜占用快照。"""
+
+    rack_id: str
+    rack_name: str
+    u_height: int
+    switch_positions: list[RackSwitchPositionResponse]
+    server_positions: list[RackServerPositionResponse]
+
+
 class RackResponse(BaseModel):
     """机柜响应，包含列表页需要的关联统计。"""
 
